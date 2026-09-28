@@ -15,7 +15,22 @@ export type Executor = Db | Tx;
 export const DB_TOKEN = Symbol('DB');
 
 export function createDb(connectionString: string, max = 10): Db {
-  const pool = new Pool({ connectionString, max, application_name: 'financiers-api' });
+  const pool = new Pool({
+    connectionString,
+    max,
+    application_name: 'financiers-api',
+    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 30_000,
+    // A runaway query must not hold row locks on money tables indefinitely.
+    statement_timeout: 30_000,
+    idle_in_transaction_session_timeout: 60_000,
+  });
+  // An idle connection can be terminated by the server (restart, failover, admin action).
+  // Without a listener, pg re-throws that as an uncaught error and the whole process exits.
+  // The pool already discards the broken client; log it and carry on.
+  pool.on('error', (err) => {
+    console.error(`[db] idle client error: ${err.message}`);
+  });
   return new Kysely<DB>({ dialect: new PostgresDialect({ pool }) });
 }
 

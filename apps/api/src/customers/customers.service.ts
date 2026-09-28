@@ -531,8 +531,12 @@ export class CustomersService {
       matchedBy = 'NAME';
       const clean = t.replace(/[%_\\]/g, '');
       base = base
-        .where((eb) => eb.or([eb('c.full_name', 'ilike', `%${clean}%`), sql<boolean>`c.full_name % ${clean}`]))
-        .orderBy(sql`similarity(c.full_name, ${clean})`, 'desc');
+        // `%` = whole-name similarity (typos); `<%` = best-matching part of the name (partial input
+        // like "lakshmi r"). Both use the trigram GIN index.
+        .where((eb) =>
+          eb.or([eb('c.full_name', 'ilike', `%${clean}%`), sql<boolean>`c.full_name % ${clean}`, sql<boolean>`${clean} <% c.full_name`]),
+        )
+        .orderBy(sql`greatest(similarity(c.full_name, ${clean}), word_similarity(${clean}, c.full_name))`, 'desc');
     }
 
     const rows = await base.orderBy('c.id', 'desc').limit(limit).execute();

@@ -196,6 +196,7 @@ describe('search', () => {
       return { ids: r.body.data.map((x: { id: string }) => x.id), matchedBy: r.body.matchedBy };
     };
     expect((await found('chandrasekar')).ids).toContain(id); // typo-tolerant
+    expect((await found('chandrasekhar red')).ids).toContain(id); // partial name
     expect((await found('+91 97012 34567')).matchedBy).toBe('MOBILE');
     expect((await found('9701234567')).ids).toContain(id);
     expect((await found(res.body.customerNo)).ids).toEqual([id]);

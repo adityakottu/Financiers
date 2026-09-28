@@ -6,6 +6,7 @@ import { Authenticated, Ctx, RequestContext, Require } from '../auth/context';
 import { conflict, notFound, parse, preconditionFailed } from '../common/errors';
 import { DB_TOKEN, Db, isUniqueViolation } from '../db/db';
 import { expectedVersion } from './versioning';
+import { ensureBranchAccounts } from '../ledger/ledger.service';
 
 const COLUMNS = ['id', 'code', 'name', 'address', 'phone', 'is_active', 'version', 'created_at'] as const;
 
@@ -55,6 +56,7 @@ export class BranchesController {
           })
           .returning(COLUMNS)
           .executeTakeFirstOrThrow();
+        await ensureBranchAccounts(tx, row);
         await this.audit.record(tx, ctx, {
           action: 'branch.created',
           entityType: 'branch',

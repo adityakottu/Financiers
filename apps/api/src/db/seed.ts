@@ -2,6 +2,7 @@ import { PERMISSIONS, SYSTEM_ROLES, passwordProblems } from '@fin/contracts';
 import { sql } from 'kysely';
 import { hashPassword } from '../auth/password';
 import { createDb, Db } from './db';
+import { ensureBranchAccounts } from '../ledger/ledger.service';
 
 export const DEFAULT_NUMBERING: Record<string, string> = {
   CUSTOMER: 'CUST-{FY}-{SEQ:6}',
@@ -10,6 +11,7 @@ export const DEFAULT_NUMBERING: Record<string, string> = {
   PAYMENT: 'PAY-{FY}-{SEQ:6}',
   JOURNAL: 'JE-{FY}-{SEQ:6}',
   EXPENSE: 'EXP-{FY}-{SEQ:6}',
+  ASSET: 'AST-{FY}-{SEQ:6}',
 };
 
 /** Reference data that must match the code: permissions, system roles and their grants. Safe to re-run. */
@@ -36,6 +38,9 @@ export async function syncReferenceData(db: Db) {
         .insertInto('role_permissions')
         .values(role.permissions.map((p) => ({ role_id: row.id, permission_code: p })))
         .execute();
+    }
+    for (const b of await tx.selectFrom('branches').select(['id', 'code', 'name']).execute()) {
+      await ensureBranchAccounts(tx, b);
     }
     for (const [seqType, format] of Object.entries(DEFAULT_NUMBERING)) {
       await tx
@@ -65,6 +70,9 @@ export async function seed(db: Db, opts: { adminUsername: string; adminPassword:
       .returning('id')
       .executeTakeFirst();
 
+    for (const b of await tx.selectFrom('branches').select(['id', 'code', 'name']).execute()) {
+      await ensureBranchAccounts(tx, b);
+    }
     const existingAdmin = await tx
       .selectFrom('user_roles as ur')
       .innerJoin('roles as r', 'r.id', 'ur.role_id')

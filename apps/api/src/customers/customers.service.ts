@@ -5,6 +5,8 @@ import {
   KYC_DOC_TYPES,
   kycInputSchema,
   mask,
+  normaliseRegistration,
+  REGISTRATION_RE,
 } from '@fin/contracts';
 import { sql } from 'kysely';
 import type { z } from 'zod';
@@ -15,6 +17,7 @@ import { CryptoService } from '../common/crypto.service';
 import { conflict, notFound, preconditionFailed, unprocessable } from '../common/errors';
 import { DB_TOKEN, Db, Executor, Tx, isUniqueViolation, pgConstraint } from '../db/db';
 import { NumberingService } from '../numbering/numbering.service';
+import { LoansService } from '../lending/loans.service';
 
 type KycType = (typeof KYC_DOC_TYPES)[number];
 type KycInput = z.infer<typeof kycInputSchema>;
@@ -40,14 +43,20 @@ export class CustomersService {
     private readonly crypto: CryptoService,
     private readonly numbering: NumberingService,
     private readonly audit: AuditService,
+    private readonly loans: LoansService,
   ) {}
 
   /* ------------------------------ scope ------------------------------ */
 
-  /** Customers visible to the caller. Collectors (ASSIGNED) see customers of their assigned loans — added in Phase 4. */
+  /** Customers visible to the caller. Collectors (ASSIGNED) see customers whose loans are assigned to them. */
   private scoped(db: Executor, auth: AuthContext) {
-    const branches = scope.branchFilter(auth);
     let q = db.selectFrom('customers as c').innerJoin('branches as b', 'b.id', 'c.branch_id');
+    if (auth.scope === 'ASSIGNED') {
+      return q.where('c.id', 'in', (eb) =>
+        eb.selectFrom('loans').select('customer_id').where('assigned_collector_id', '=', auth.employeeId ?? NONE).where('status', '=', 'ACTIVE'),
+      );
+    }
+    const branches = scope.branchFilter(auth);
     if (branches) q = q.where('c.branch_id', 'in', branches.length ? branches : [NONE]);
     return q;
   }
@@ -481,6 +490,8 @@ export class CustomersService {
     const t = term.trim();
     const upper = normaliseId(t);
     const digits = t.replace(/\D/g, '');
+    const loanHits = await this.searchLoans(auth, t, upper, limit);
+    if (loanHits) return loanHits;
     let base = this.scoped(this.db, auth).select([
       'c.id',
       'c.customer_no',
@@ -540,6 +551,15 @@ export class CustomersService {
     }
 
     const rows = await base.orderBy('c.id', 'desc').limit(limit).execute();
+    const active = rows.length
+      ? await this.loans
+          .scoped(this.db, auth)
+          .select(['l.id', 'l.customer_id', 'l.loan_no', 'l.status', 'l.balance_payable', 'l.next_due_date', 'l.next_due_amount', 'l.dpd'])
+          .where('l.customer_id', 'in', rows.map((r) => r.id))
+          .where('l.status', 'in', ['ACTIVE', 'APPROVED', 'PENDING_APPROVAL', 'DRAFT'])
+          .orderBy('l.id', 'desc')
+          .execute()
+      : [];
     return {
       matchedBy,
       data: rows.map((r) => ({
@@ -552,8 +572,75 @@ export class CustomersService {
         branchCode: r.branch_code,
         kycStatus: r.kyc_status,
         status: r.status,
-        // Loan summary (active loan → outstanding → next due) is added in Phase 3.
-        activeLoan: null,
+        activeLoan: (() => {
+          const l = active.find((x) => x.customer_id === r.id && x.status === 'ACTIVE') ?? active.find((x) => x.customer_id === r.id);
+          return l
+            ? { id: l.id, loanNo: l.loan_no, status: l.status, outstanding: l.balance_payable, nextDueDate: l.next_due_date, nextDueAmount: l.next_due_amount, dpd: l.dpd }
+            : null;
+        })(),
+      })),
+    };
+  }
+
+  /**
+   * Loan number, vehicle registration, chassis, engine or serial number → the loan(s).
+   * Returns null when the term doesn't look like one of those, so customer search runs instead.
+   */
+  private async searchLoans(auth: AuthContext, t: string, upper: string, limit: number) {
+    let matchedBy: string | null = null;
+    let q = this.loans
+      .scoped(this.db, auth)
+      .leftJoin('assets as a', 'a.loan_id', 'l.id')
+      .select([
+        'l.id',
+        'l.loan_no',
+        'l.status',
+        'l.balance_payable',
+        'l.next_due_date',
+        'l.next_due_amount',
+        'l.dpd',
+        'c.id as customer_id',
+        'c.full_name',
+        'c.customer_no',
+        'b.code as branch_code',
+        sql<string>`coalesce(a.registration_no, nullif(concat_ws(' ', a.make, a.model), ''), a.description)`.as('asset_label'),
+      ]);
+    if (/^LN[-/]?[A-Z0-9]/i.test(t)) {
+      matchedBy = 'LOAN_NO';
+      q = q.where('l.loan_no', 'ilike', `%${t.replace(/[%_\\]/g, '')}%`);
+    } else if (REGISTRATION_RE.test(normaliseRegistration(t)) && /[A-Z]/i.test(t) && /\d/.test(t)) {
+      matchedBy = 'REGISTRATION';
+      q = q.where('a.registration_no', '=', normaliseRegistration(t));
+    } else if (/^[A-Z0-9]{6,30}$/.test(upper) && /\d/.test(upper) && /[A-Z]/.test(upper)) {
+      const hit = await this.db
+        .selectFrom('assets')
+        .select('id')
+        .where((eb) => eb.or([eb('chassis_no', '=', upper), eb('engine_no', '=', upper), eb('serial_no', '=', upper)]))
+        .limit(1)
+        .executeTakeFirst();
+      if (!hit) return null;
+      matchedBy = 'VEHICLE_OR_SERIAL';
+      q = q.where((eb) => eb.or([eb('a.chassis_no', '=', upper), eb('a.engine_no', '=', upper), eb('a.serial_no', '=', upper)]));
+    } else {
+      return null;
+    }
+    const rows = await q.orderBy('l.id', 'desc').limit(limit).execute();
+    return {
+      matchedBy,
+      data: rows.map((r) => ({
+        type: 'loan' as const,
+        id: r.id,
+        loanNo: r.loan_no,
+        status: r.status,
+        customerId: r.customer_id,
+        fullName: r.full_name,
+        customerNo: r.customer_no,
+        branchCode: r.branch_code,
+        assetLabel: r.asset_label,
+        outstanding: r.balance_payable,
+        nextDueDate: r.next_due_date,
+        nextDueAmount: r.next_due_amount,
+        dpd: r.dpd,
       })),
     };
   }

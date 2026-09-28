@@ -140,6 +140,21 @@ export class Client {
     return this.capture(await r);
   }
 
+  /** GET a binary response (xlsx, pdf) as bytes. */
+  async download(path: string) {
+    const res = await request(this.server)
+      .get(`/api/v1${path}`)
+      .set('Cookie', this.cookieHeader())
+      .set('X-Forwarded-For', this.ip)
+      .buffer(true)
+      .parse((r, cb) => {
+        const chunks: Buffer[] = [];
+        r.on('data', (c: Buffer) => chunks.push(c));
+        r.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    return { status: res.status, headers: res.headers, bytes: res.body as Buffer };
+  }
+
   get(path: string, headers?: Record<string, string>) {
     return this.send('get', path, undefined, headers);
   }

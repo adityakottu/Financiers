@@ -19,12 +19,12 @@ export default async function setup() {
 
   await migrate(TEST_DATABASE_URL, () => undefined);
   const db = createDb(TEST_DATABASE_URL, 2);
-  await syncReferenceData(db);
   const company = await db.insertInto('companies').values({ legal_name: 'Test Finance Pvt Ltd' }).returning('id').executeTakeFirstOrThrow();
   await db.insertInto('branches').values([
     { company_id: company.id, code: 'HQ', name: 'Head Office' },
     { company_id: company.id, code: 'KKD', name: 'Kakinada' },
     { company_id: company.id, code: 'RJY', name: 'Rajahmundry' },
   ]).execute();
+  await syncReferenceData(db); // also creates each branch's cash accounts
   await db.destroy();
 }

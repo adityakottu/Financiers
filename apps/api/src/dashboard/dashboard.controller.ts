@@ -3,12 +3,13 @@ import { sql } from 'kysely';
 import { scope } from '../auth/access.service';
 import { Authenticated, Ctx, RequestContext } from '../auth/context';
 import { DB_TOKEN, Db } from '../db/db';
+import { istToday } from '../common/dates';
 
 const NONE = '00000000-0000-0000-0000-000000000000';
 
 /**
- * Phase 2 dashboard: only figures that exist today. Lending, collection and reconciliation
- * KPIs are added by the phases that create that data — never shown as fake numbers.
+ * Only figures that exist today. Collection and reconciliation KPIs are added by the phases
+ * that create that data — never shown as fake numbers.
  */
 @Controller('dashboard')
 export class DashboardController {
@@ -58,7 +59,69 @@ export class DashboardController {
           .executeTakeFirstOrThrow()
       : null;
 
+    const today = istToday();
+    const loans = ctx.auth.permissions.has('loan.view') && ctx.auth.scope !== 'ASSIGNED'
+      ? await this.db
+          .selectFrom('loans')
+          .select([
+            sql<string>`count(*) FILTER (WHERE status = 'ACTIVE')`.as('active'),
+            sql<string>`count(*) FILTER (WHERE status = 'CLOSED')`.as('closed'),
+            sql<string>`count(*) FILTER (WHERE status IN ('DRAFT','PENDING_APPROVAL','APPROVED'))`.as('pipeline'),
+            sql<string>`count(*) FILTER (WHERE status = 'PENDING_APPROVAL')`.as('awaiting_approval'),
+            sql<string>`count(*) FILTER (WHERE status = 'APPROVED')`.as('awaiting_disbursal'),
+            sql<string>`coalesce(sum(principal_outstanding) FILTER (WHERE status = 'ACTIVE'), 0)::text`.as('principal_outstanding'),
+            sql<string>`coalesce(sum(interest_outstanding) FILTER (WHERE status = 'ACTIVE'), 0)::text`.as('interest_outstanding'),
+            sql<string>`coalesce(sum(balance_payable) FILTER (WHERE status = 'ACTIVE'), 0)::text`.as('receivable'),
+            sql<string>`coalesce(sum(overdue_amount) FILTER (WHERE status = 'ACTIVE'), 0)::text`.as('overdue_amount'),
+            sql<string>`count(*) FILTER (WHERE status = 'ACTIVE' AND dpd > 0)`.as('overdue_loans'),
+            sql<string>`coalesce(sum(principal) FILTER (WHERE disbursed_on IS NOT NULL), 0)::text`.as('total_disbursed'),
+            sql<string>`count(*) FILTER (WHERE disbursed_on = ${today}::date)`.as('disbursed_today_count'),
+            sql<string>`coalesce(sum(principal) FILTER (WHERE disbursed_on = ${today}::date), 0)::text`.as('disbursed_today'),
+          ])
+          .$if(ids !== null, (q) => q.where('branch_id', 'in', ids!))
+          .executeTakeFirstOrThrow()
+      : null;
+    const dueToday = loans
+      ? await this.db
+          .selectFrom('loan_installments as i')
+          .innerJoin('loans as l', 'l.id', 'i.loan_id')
+          .select([sql<string>`count(*)`.as('n'), sql<string>`coalesce(sum(i.total_due - i.total_paid), 0)::text`.as('amount')])
+          .where('l.status', '=', 'ACTIVE')
+          .where('i.due_date', '=', today)
+          .where('i.status', 'not in', ['PAID', 'WAIVED', 'RESCHEDULED'])
+          .$if(ids !== null, (q) => q.where('l.branch_id', 'in', ids!))
+          .executeTakeFirstOrThrow()
+      : null;
+    const byCategory = loans
+      ? await this.db
+          .selectFrom('loans')
+          .select(['category', sql<string>`count(*)`.as('n'), sql<string>`coalesce(sum(principal_outstanding), 0)::text`.as('outstanding')])
+          .where('status', '=', 'ACTIVE')
+          .$if(ids !== null, (q) => q.where('branch_id', 'in', ids!))
+          .groupBy('category')
+          .orderBy('category')
+          .execute()
+      : [];
+
     return {
+      loans: loans && {
+        active: Number(loans.active),
+        closed: Number(loans.closed),
+        pipeline: Number(loans.pipeline),
+        awaitingApproval: Number(loans.awaiting_approval),
+        awaitingDisbursal: Number(loans.awaiting_disbursal),
+        principalOutstanding: loans.principal_outstanding,
+        interestOutstanding: loans.interest_outstanding,
+        receivable: loans.receivable,
+        overdueAmount: loans.overdue_amount,
+        overdueLoans: Number(loans.overdue_loans),
+        totalDisbursed: loans.total_disbursed,
+        disbursedToday: loans.disbursed_today,
+        disbursedTodayCount: Number(loans.disbursed_today_count),
+        dueTodayCount: Number(dueToday!.n),
+        dueTodayAmount: dueToday!.amount,
+        byCategory: byCategory.map((c) => ({ category: c.category, count: Number(c.n), outstanding: c.outstanding })),
+      },
       customers: customers && {
         active: Number(customers.active),
         total: Number(customers.total),
@@ -68,7 +131,6 @@ export class DashboardController {
       staff: staff && { active: Number(staff.active), collectors: Number(staff.collectors) },
       branches: byBranch.map((b) => ({ id: b.id, code: b.code, name: b.name, activeCustomers: Number(b.active_customers) })),
       availableFrom: {
-        loans: 'Phase 3',
         collections: 'Phase 4',
         accounting: 'Phase 5',
         reconciliation: 'Phase 6',

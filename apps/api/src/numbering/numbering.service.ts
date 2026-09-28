@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { sql } from 'kysely';
 import type { Executor, Tx } from '../db/db';
 
-export type SeqType = 'CUSTOMER' | 'LOAN' | 'RECEIPT' | 'PAYMENT' | 'JOURNAL' | 'EXPENSE';
+export type SeqType = 'CUSTOMER' | 'LOAN' | 'ASSET' | 'RECEIPT' | 'PAYMENT' | 'JOURNAL' | 'EXPENSE';
 
 /** Indian financial year (April–March) identified by its starting calendar year. */
 export function fiscalYear(date: Date, fyStartMonth = 4, timeZone = 'Asia/Kolkata'): number {

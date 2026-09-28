@@ -27,6 +27,93 @@ export type Numeric = ColumnType<string, number | string, number | string>;
 
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
+export interface AccountingPeriods {
+  id: Generated<string>;
+  locked_at: Timestamp | null;
+  locked_by: string | null;
+  period_end: string;
+  period_start: string;
+  status: Generated<string>;
+}
+
+export interface Accounts {
+  branch_id: string | null;
+  code: string;
+  created_at: Generated<Timestamp>;
+  created_by: string | null;
+  employee_id: string | null;
+  id: Generated<string>;
+  is_active: Generated<boolean>;
+  is_postable: Generated<boolean>;
+  is_system: Generated<boolean>;
+  name: string;
+  normal_balance: string;
+  parent_id: string | null;
+  subtype: string | null;
+  type: string;
+}
+
+export interface AssetDocuments {
+  asset_id: string;
+  created_at: Generated<Timestamp>;
+  created_by: string;
+  doc_type: string;
+  expiry_date: string | null;
+  file_id: string;
+  id: Generated<string>;
+}
+
+export interface AssetEvents {
+  actor_id: string | null;
+  asset_id: string;
+  at: Generated<Timestamp>;
+  from_status: string | null;
+  id: Generated<Int8>;
+  reason: string | null;
+  to_status: string;
+}
+
+export interface Assets {
+  asset_no: string;
+  asset_value: Numeric | null;
+  attributes: Generated<Json>;
+  branch_id: string;
+  category: string;
+  chassis_no: string | null;
+  colour: string | null;
+  created_at: Generated<Timestamp>;
+  created_by: string | null;
+  customer_id: string;
+  dealer_name: string | null;
+  description: string | null;
+  engine_no: string | null;
+  fitness_expiry: string | null;
+  hypothecation_date: string | null;
+  hypothecation_marked: Generated<boolean>;
+  id: Generated<string>;
+  insurance_expiry: string | null;
+  insurance_policy_no: string | null;
+  insurer: string | null;
+  invoice_no: string | null;
+  loan_id: string;
+  make: string | null;
+  manufacture_year: number | null;
+  model: string | null;
+  permit_expiry: string | null;
+  permit_no: string | null;
+  purchase_date: string | null;
+  purchase_price: Numeric | null;
+  registration_no: string | null;
+  serial_no: string | null;
+  status: Generated<string>;
+  tax_valid_till: string | null;
+  updated_at: Generated<Timestamp>;
+  updated_by: string | null;
+  variant: string | null;
+  vehicle_type: string | null;
+  version: Generated<number>;
+}
+
 export interface AuditLogs {
   action: string;
   at: Generated<Timestamp>;
@@ -45,6 +132,20 @@ export interface AuditLogs {
   session_id: string | null;
   user_agent: string | null;
   user_id: string | null;
+}
+
+export interface BankAccounts {
+  account_id: string;
+  account_no_enc: Buffer | null;
+  account_no_last4: string | null;
+  bank_name: string;
+  branch_name: string | null;
+  created_at: Generated<Timestamp>;
+  created_by: string | null;
+  id: Generated<string>;
+  ifsc: string | null;
+  kind: string;
+  upi_vpa: string | null;
 }
 
 export interface Branches {
@@ -97,6 +198,7 @@ export interface CustomerEvents {
   customer_id: string;
   event_type: string;
   id: Generated<Int8>;
+  loan_id: string | null;
   ref_id: string | null;
   ref_type: string | null;
   summary: string;
@@ -204,6 +306,182 @@ export interface IdempotencyKeys {
   response_status: number;
   route: string;
   user_id: string;
+}
+
+export interface JobRuns {
+  business_date: string;
+  details: Json | null;
+  finished_at: Timestamp | null;
+  job: string;
+  started_at: Generated<Timestamp>;
+  status: string;
+}
+
+export interface JournalEntries {
+  approved_by: string | null;
+  branch_id: string | null;
+  created_by: string | null;
+  entry_no: string;
+  entry_type: string;
+  id: Generated<string>;
+  narration: string;
+  posted_at: Generated<Timestamp>;
+  reverses_entry_id: string | null;
+  source_id: string | null;
+  source_type: string | null;
+  value_date: string;
+}
+
+export interface JournalLines {
+  account_id: string;
+  branch_id: string | null;
+  credit: Generated<Numeric>;
+  customer_id: string | null;
+  debit: Generated<Numeric>;
+  employee_id: string | null;
+  entry_id: string;
+  id: Generated<string>;
+  line_no: number;
+  loan_id: string | null;
+  memo: string | null;
+}
+
+export interface LoanCharges {
+  amount: Numeric;
+  assessed_on: string;
+  charge_type: string;
+  code: string;
+  collection_mode: string | null;
+  created_at: Generated<Timestamp>;
+  description: string;
+  gst_amount: Generated<Numeric>;
+  id: Generated<string>;
+  installment_id: string | null;
+  journal_entry_id: string | null;
+  loan_id: string;
+  status: Generated<string>;
+}
+
+export interface LoanInstallments {
+  closing_principal: Numeric;
+  days_overdue: Generated<number>;
+  due_date: string;
+  fees_due: Generated<Numeric>;
+  fees_paid: Generated<Numeric>;
+  id: Generated<string>;
+  installment_no: number;
+  interest_accrued_at: Timestamp | null;
+  interest_due: Numeric;
+  interest_paid: Generated<Numeric>;
+  loan_id: string;
+  opening_principal: Numeric;
+  paid_on: string | null;
+  penalty_due: Generated<Numeric>;
+  penalty_paid: Generated<Numeric>;
+  principal_due: Numeric;
+  principal_paid: Generated<Numeric>;
+  schedule_version: Generated<number>;
+  status: Generated<string>;
+  total_due: Generated<Numeric | null>;
+  total_paid: Generated<Numeric | null>;
+  waived_amount: Generated<Numeric>;
+}
+
+export interface LoanProducts {
+  allocation_rule: Json;
+  allowed_frequencies: string[];
+  amount_max: Numeric;
+  amount_min: Numeric;
+  approval_limit: Numeric | null;
+  category: string;
+  code: string;
+  created_at: Generated<Timestamp>;
+  created_by: string | null;
+  description: string | null;
+  fee_rules: Generated<Json>;
+  id: Generated<string>;
+  interest_method: string;
+  is_latest: Generated<boolean>;
+  max_ltv_pct: Numeric | null;
+  name: string;
+  penalty_rule: Json;
+  rate_default: Numeric;
+  rate_max: Numeric;
+  rate_min: Numeric;
+  rounding_unit: Generated<string>;
+  skip_sundays: Generated<boolean>;
+  status: Generated<string>;
+  tenure_max: number;
+  tenure_min: number;
+  version: Generated<number>;
+}
+
+export interface Loans {
+  allocation_rule: Json;
+  annual_rate: Numeric;
+  approved_at: Timestamp | null;
+  approved_by: string | null;
+  apr: Numeric;
+  asset_value: Numeric | null;
+  assigned_collector_id: string | null;
+  balance_payable: Generated<Numeric>;
+  branch_id: string;
+  calc_snapshot: Json;
+  cancel_reason: string | null;
+  cancelled_at: Timestamp | null;
+  cancelled_by: string | null;
+  category: string;
+  closed_at: Timestamp | null;
+  created_at: Generated<Timestamp>;
+  created_by: string;
+  custom_interval_days: number | null;
+  customer_id: string;
+  decision_note: string | null;
+  disbursed_at: Timestamp | null;
+  disbursed_on: string | null;
+  disbursement_account_id: string | null;
+  disbursement_date: string;
+  disbursement_journal_id: string | null;
+  disbursement_mode: string | null;
+  disbursement_reference: string | null;
+  down_payment: Generated<Numeric>;
+  dpd: Generated<number>;
+  engine_version: string;
+  fees: Generated<Json>;
+  fees_deducted: Numeric;
+  fees_in_installments: Numeric;
+  fees_outstanding: Generated<Numeric>;
+  first_due_date: string;
+  frequency: string;
+  id: Generated<string>;
+  installment_amount: Numeric;
+  interest_method: string;
+  interest_outstanding: Generated<Numeric>;
+  loan_no: string;
+  maturity_date: string;
+  net_disbursement: Numeric;
+  next_due_amount: Numeric | null;
+  next_due_date: string | null;
+  num_installments: number;
+  overdue_amount: Generated<Numeric>;
+  penalty_outstanding: Generated<Numeric>;
+  penalty_rule: Json;
+  principal: Numeric;
+  principal_outstanding: Generated<Numeric>;
+  product_id: string;
+  rejected_at: Timestamp | null;
+  rejected_by: string | null;
+  rounding_unit: string;
+  skip_sundays: Generated<boolean>;
+  status: Generated<string>;
+  submitted_at: Timestamp | null;
+  submitted_by: string | null;
+  total_fees: Numeric;
+  total_gst: Numeric;
+  total_interest: Numeric;
+  total_payable: Numeric;
+  updated_at: Generated<Timestamp>;
+  version: Generated<number>;
 }
 
 export interface LoginEvents {
@@ -343,7 +621,13 @@ export interface Users {
 }
 
 export interface DB {
+  accounting_periods: AccountingPeriods;
+  accounts: Accounts;
+  asset_documents: AssetDocuments;
+  asset_events: AssetEvents;
+  assets: Assets;
   audit_logs: AuditLogs;
+  bank_accounts: BankAccounts;
   branches: Branches;
   companies: Companies;
   customer_documents: CustomerDocuments;
@@ -354,6 +638,13 @@ export interface DB {
   employees: Employees;
   files: Files;
   idempotency_keys: IdempotencyKeys;
+  job_runs: JobRuns;
+  journal_entries: JournalEntries;
+  journal_lines: JournalLines;
+  loan_charges: LoanCharges;
+  loan_installments: LoanInstallments;
+  loan_products: LoanProducts;
+  loans: Loans;
   login_events: LoginEvents;
   mfa_recovery_codes: MfaRecoveryCodes;
   numbering_formats: NumberingFormats;

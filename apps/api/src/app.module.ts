@@ -25,6 +25,12 @@ import { BranchesController } from './org/branches.controller';
 import { EmployeesController } from './org/employees.controller';
 import { SettingsController } from './settings/settings.controller';
 import { UsersController } from './users/users.controller';
+import { AccountsController } from './ledger/accounts.controller';
+import { LedgerService } from './ledger/ledger.service';
+import { AssetsController, LoansController, ProductsController } from './lending/lending.controller';
+import { LoansService } from './lending/loans.service';
+import { JobsController } from './jobs/jobs.controller';
+import { JobsService } from './jobs/jobs.service';
 
 @Controller('health')
 class HealthController {
@@ -70,6 +76,11 @@ export class AppModule implements NestModule {
         CustomersController,
         SearchController,
         DashboardController,
+        ProductsController,
+        LoansController,
+        AssetsController,
+        AccountsController,
+        JobsController,
       ],
       providers: [
         { provide: CONFIG, useValue: config },
@@ -84,6 +95,9 @@ export class AppModule implements NestModule {
         IdempotencyService,
         FilesService,
         CustomersService,
+        LedgerService,
+        LoansService,
+        JobsService,
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_GUARD, useClass: AuthGuard },
       ],

@@ -26,6 +26,24 @@ export const PERMISSIONS = {
   'document.view_kyc': 'View KYC documents',
   'search.global': 'Use global search',
 
+  // Lending
+  'product.manage': 'Create and change loan products',
+  'loan.view': 'View loans, schedules and assets',
+  'loan.create': 'Create loan applications',
+  'loan.approve': 'Approve or reject loans up to the product approval limit',
+  'loan.approve_high': 'Approve or reject loans above the product approval limit',
+  'loan.disburse': 'Disburse approved loans',
+  'loan.cancel': 'Cancel loans that have not been disbursed',
+  'asset.edit': 'Edit financed asset details and documents',
+  'statement.generate': 'Download loan statements',
+
+  // Accounting
+  'ledger.view': 'View chart of accounts, journals and ledgers',
+  'coa.manage': 'Add bank and cash accounts',
+
+  // System
+  'jobs.run': 'Run end-of-day jobs manually',
+
   // Dashboards
   'dashboard.company': 'Company dashboard',
   'dashboard.branch': 'Branch dashboard',
@@ -72,6 +90,11 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'ALL',
     mfaRequired: true,
     permissions: [
+      'loan.view',
+      'loan.approve',
+      'loan.approve_high',
+      'statement.generate',
+      'ledger.view',
       'employee.view',
       'audit.view',
       'customer.view',
@@ -90,6 +113,13 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'BRANCH',
     mfaRequired: false,
     permissions: [
+      'loan.view',
+      'loan.create',
+      'loan.approve',
+      'loan.disburse',
+      'loan.cancel',
+      'asset.edit',
+      'statement.generate',
       'employee.view',
       'employee.manage',
       'audit.view',
@@ -112,6 +142,11 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'BRANCH',
     mfaRequired: true,
     permissions: [
+      'loan.view',
+      'loan.disburse',
+      'statement.generate',
+      'ledger.view',
+      'coa.manage',
       'employee.view',
       'audit.view',
       'customer.view',
@@ -127,7 +162,13 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     name: 'Collection Employee',
     scope: 'ASSIGNED',
     mfaRequired: false,
-    permissions: ['customer.view', 'customer.view_contact', 'search.global', 'dashboard.collector'],
+    permissions: [
+      'loan.view',
+      'customer.view',
+      'customer.view_contact',
+      'search.global',
+      'dashboard.collector',
+    ],
   },
 ];
 

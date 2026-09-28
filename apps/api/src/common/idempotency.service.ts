@@ -23,8 +23,9 @@ function stableStringify(v: unknown): string {
 
 /**
  * Exactly-once execution for create/financial endpoints (doc 02 §7).
- * The business work and the idempotency record commit in one transaction; a concurrent
- * duplicate loses on the primary key, rolls back entirely, and replays the winner's response.
+ * The key is claimed first, and the business work and the stored response commit in the same
+ * transaction. A concurrent duplicate waits on the key, then replays the winner's response; if the
+ * winner fails and rolls back, the key is released and the duplicate simply runs.
  */
 @Injectable()
 export class IdempotencyService {
@@ -50,17 +51,19 @@ export class IdempotencyService {
     if (prior) return prior as IdemResult<T>;
     try {
       const result = await this.db.transaction().execute(async (tx) => {
-        const r = await work(tx);
+        // Claim the key before doing any work. A concurrent request with the same key blocks on
+        // this primary key until we commit, then fails the insert and replays our response —
+        // instead of racing us for the business row and seeing half-finished state.
         await tx
           .insertInto('idempotency_keys')
-          .values({
-            user_id: userId,
-            key,
-            route,
-            request_hash: hash,
-            response_status: r.status,
-            response_body: JSON.parse(JSON.stringify(r.body)),
-          })
+          .values({ user_id: userId, key, route, request_hash: hash, response_status: 0, response_body: JSON.stringify({}) })
+          .execute();
+        const r = await work(tx);
+        await tx
+          .updateTable('idempotency_keys')
+          .set({ response_status: r.status, response_body: JSON.stringify(r.body) })
+          .where('user_id', '=', userId)
+          .where('key', '=', key)
           .execute();
         return r;
       });

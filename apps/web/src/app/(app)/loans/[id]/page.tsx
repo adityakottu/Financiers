@@ -97,7 +97,7 @@ export default function LoanPage({ params }: { params: Promise<{ id: string }> }
           <span className="flex flex-wrap items-center gap-3">
             <span className="num font-mono">{loan.loan_no}</span>
             <LoanStatusBadge status={loan.status} />
-            {active && <DpdBadge dpd={loan.dpd} />}
+            {active && loan.dpd > 0 && <DpdBadge dpd={loan.dpd} />}
           </span>
         }
         subtitle={

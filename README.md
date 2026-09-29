@@ -3,7 +3,8 @@
 Lending, collections, accounting and daily reconciliation system for an
 asset-backed lending business in India.
 
-**Current phase:** Phase 2 — Core platform ✅ (see [Phase 2 report](docs/phase-2-report.md)).
+**Current phase:** Phase 3 — Lending & ledger core ✅ (see [Phase 3 report](docs/phase-3-report.md);
+earlier: [Phase 2 report](docs/phase-2-report.md)).
 Architecture and specifications: [docs/README.md](docs/README.md).
 
 ## Repository layout
@@ -11,6 +12,7 @@ Architecture and specifications: [docs/README.md](docs/README.md).
 ```
 apps/api          NestJS API (PostgreSQL, Kysely, SQL migrations)
 apps/web          Next.js web app (desktop console + mobile-responsive)
+packages/loan-engine Pure schedule / APR / fee / penalty calculations (shared by API and web)
 packages/money    Decimal Money type and Indian number formatting
 packages/contracts Permission catalogue, roles, Zod schemas shared by API and web
 docs/             Architecture pack (Phase 1) and phase reports
@@ -37,6 +39,15 @@ SEED_ADMIN_PASSWORD='<a strong password>' pnpm db:seed
 pnpm dev:api     # http://localhost:4000/api/v1
 pnpm dev:web     # http://localhost:3000  (proxies /api/v1 to the API)
 ```
+
+The demo data includes branches KKD and RJY, users `manager.kkd`, `manager.rjy`
+and `collector.kkd` (password = `DEMO_PASSWORD`), 36 customers, three loan
+products and loans in every state, with end-of-day processing run for the last
+10 days.
+
+Production web build: `pnpm --filter @fin/web build`. Do not run it with
+`NODE_ENV=development` exported in your shell (Next.js then fails with
+"<Html> should not be imported outside of pages/_document").
 
 The first Super Admin must change the seeded password and enrol two-step
 verification (any TOTP authenticator app) at first sign-in.

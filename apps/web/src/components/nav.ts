@@ -1,6 +1,8 @@
 import type { Permission } from '@fin/contracts';
 import {
   BarChart3,
+  Calculator,
+  Package,
   Bell,
   Boxes,
   Building2,
@@ -41,17 +43,18 @@ export const NAV: NavGroup[] = [
     items: [
       { label: 'Dashboard', href: '/', icon: LayoutDashboard },
       { label: 'Customers', href: '/customers', icon: Users, requires: ['customer.view'] },
-      { label: 'Loans', href: '/loans', icon: Landmark, phase: 3 },
+      { label: 'Loans', href: '/loans', icon: Landmark, requires: ['loan.view'] },
+      { label: 'Calculator', href: '/calculator', icon: Calculator, requires: ['loan.view'] },
+      { label: 'Assets', href: '/assets', icon: Boxes, requires: ['loan.view'] },
       { label: 'Collections', href: '/collections', icon: HandCoins, phase: 4 },
-      { label: 'Installments', href: '/installments', icon: CalendarClock, phase: 3 },
-      { label: 'Assets', href: '/assets', icon: Boxes, phase: 3 },
+      { label: 'Installments due', href: '/installments', icon: CalendarClock, phase: 4 },
     ],
   },
   {
     label: 'Money',
     items: [
       { label: 'Reconciliation', href: '/reconciliation', icon: Scale, phase: 6 },
-      { label: 'Accounts', href: '/accounts', icon: Wallet, phase: 5 },
+      { label: 'Accounts', href: '/accounts', icon: Wallet, requires: ['ledger.view'] },
       { label: 'Transactions', href: '/transactions', icon: Receipt, phase: 5 },
       { label: 'Expenses', href: '/expenses', icon: FileText, phase: 5 },
       { label: 'Reports', href: '/reports', icon: BarChart3, phase: 7 },
@@ -63,6 +66,7 @@ export const NAV: NavGroup[] = [
       { label: 'Employees', href: '/admin/employees', icon: UserCog, requires: ['employee.view'] },
       { label: 'Branches', href: '/admin/branches', icon: Building2, requires: ['branch.manage'] },
       { label: 'Users & access', href: '/admin/users', icon: ShieldCheck, requires: ['user.manage'] },
+      { label: 'Loan products', href: '/admin/products', icon: Package, requires: ['loan.view'] },
       { label: 'Communications', href: '/communications', icon: MessageSquare, phase: 4 },
       { label: 'Notifications', href: '/notifications', icon: Bell, phase: 4 },
       { label: 'Audit log', href: '/audit', icon: ScrollText, requires: ['audit.view'] },

@@ -11,7 +11,7 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
     "db:codegen": "kysely-codegen --dialect postgres --date-parser string --out-file src/db/schema.ts --exclude-pattern schema_migrations",
-    "db:seed:demo": "tsx src/db/seed-demo.ts"
+    "db:seed:demo": "nest build && node dist/db/seed-demo.js"
   },
   "dependencies": {
     "@fin/contracts": "workspace:*",

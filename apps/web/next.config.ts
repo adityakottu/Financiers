@@ -5,7 +5,7 @@ const API_URL = process.env.API_URL ?? 'http://localhost:4000';
 const config: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
-  transpilePackages: ['@fin/contracts', '@fin/money'],
+  transpilePackages: ['@fin/contracts', '@fin/money', '@fin/loan-engine'],
   // The browser only ever talks to this origin; /api/v1 is proxied to the API so cookies stay
   // first-party (SameSite=Strict) and there is no CORS surface.
   async rewrites() {

@@ -83,8 +83,8 @@ export class LoansController {
   @Post('calculate')
   @HttpCode(200)
   calculate(@Body() body: unknown) {
-    const { productId, ...terms } = parse(loanCalculateSchema, body);
-    return this.loans.preview(productId, terms);
+    const { productId, assetValue, ...terms } = parse(loanCalculateSchema, body);
+    return this.loans.preview(productId, terms, assetValue);
   }
 
   /** Stand-alone calculator: any method and fees, no product. */

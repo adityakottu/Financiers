@@ -184,7 +184,7 @@ const termsFields = {
 };
 
 /** Preview for a product (fees and rounding come from the product). */
-export const loanCalculateSchema = z.object({ productId: z.string().uuid(), ...termsFields }).strict();
+export const loanCalculateSchema = z.object({ productId: z.string().uuid(), ...termsFields, assetValue: optional(moneySchema) }).strict();
 
 /** Stand-alone calculator (no product): every setting supplied. */
 export const freeCalculateSchema = z

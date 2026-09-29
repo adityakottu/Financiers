@@ -6,9 +6,10 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { get, qs } from '@/lib/api';
 import { useDebounced } from '@/lib/hooks';
-import { cx, StatusBadge } from './ui';
+import { cx } from './ui';
+import { date, inr } from '@/lib/format';
 
-interface Result {
+interface CustomerResult {
   type: 'customer';
   id: string;
   customerNo: string;
@@ -18,7 +19,25 @@ interface Result {
   branchCode: string;
   kycStatus: string;
   status: string;
+  activeLoan: { id: string; loanNo: string; status: string; outstanding: string; nextDueDate: string | null; nextDueAmount: string | null; dpd: number } | null;
 }
+interface LoanResult {
+  type: 'loan';
+  id: string;
+  loanNo: string;
+  status: string;
+  customerId: string;
+  fullName: string;
+  customerNo: string;
+  branchCode: string;
+  assetLabel: string | null;
+  outstanding: string;
+  nextDueDate: string | null;
+  nextDueAmount: string | null;
+  dpd: number;
+}
+type Result = CustomerResult | LoanResult;
+const href = (r: Result) => (r.type === 'loan' ? `/loans/${r.id}` : `/customers/${r.id}`);
 
 const MATCH_LABEL: Record<string, string> = {
   NAME: 'name',
@@ -27,11 +46,14 @@ const MATCH_LABEL: Record<string, string> = {
   CUSTOMER_NO: 'customer ID',
   ID_DOCUMENT: 'licence / voter ID',
   AADHAAR_LAST4_OR_MOBILE: 'Aadhaar last 4 / mobile',
+  LOAN_NO: 'loan number',
+  REGISTRATION: 'vehicle registration',
+  VEHICLE_OR_SERIAL: 'chassis / engine / serial number',
 };
 
 /**
- * One box for everything: name, mobile, customer ID, PAN, Aadhaar last 4, DL.
- * (Loan number, vehicle registration, chassis and engine numbers join in Phase 3.)
+ * One box for everything: name, mobile, customer ID, PAN, Aadhaar last 4, DL, loan number,
+ * vehicle registration, chassis, engine or serial number.
  */
 export function GlobalSearch({ autoFocus, onNavigate }: { autoFocus?: boolean; onNavigate?: () => void }) {
   const router = useRouter();
@@ -82,7 +104,7 @@ export function GlobalSearch({ autoFocus, onNavigate }: { autoFocus?: boolean; o
     setOpen(false);
     setQ('');
     onNavigate?.();
-    router.push(`/customers/${r.id}`);
+    router.push(href(r));
   }
 
   return (
@@ -103,7 +125,7 @@ export function GlobalSearch({ autoFocus, onNavigate }: { autoFocus?: boolean; o
           else if (e.key === 'Enter' && results[active]) go(results[active]);
           else if (e.key === 'Escape') setOpen(false);
         }}
-        placeholder="Search name, mobile, customer ID, PAN…"
+        placeholder="Search name, mobile, ID, PAN, loan no., vehicle…"
         aria-label="Search"
         className="h-10 w-full rounded-md border border-line bg-canvas pl-9 pr-12 text-sm placeholder:text-subtle focus:border-accent focus:bg-surface focus:outline-none focus:ring-2 focus:ring-accent/20"
       />
@@ -124,7 +146,7 @@ export function GlobalSearch({ autoFocus, onNavigate }: { autoFocus?: boolean; o
                 {results.map((r, i) => (
                   <li key={r.id} role="option" aria-selected={i === active}>
                     <Link
-                      href={`/customers/${r.id}`}
+                      href={href(r)}
                       onClick={(e) => {
                         e.preventDefault();
                         go(r);
@@ -133,14 +155,29 @@ export function GlobalSearch({ autoFocus, onNavigate }: { autoFocus?: boolean; o
                       className={cx('flex items-center justify-between gap-3 px-4 py-2.5', i === active && 'bg-canvas')}
                     >
                       <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-ink-950">{r.fullName}</span>
+                        <span className="block truncate text-sm font-medium text-ink-950">
+                          {r.type === 'loan' ? <span className="num font-mono">{r.loanNo}</span> : r.fullName}
+                        </span>
                         <span className="num block truncate text-[12px] text-muted">
-                          {r.customerNo} · {r.mobile} · {r.villageTown ?? r.branchCode}
+                          {r.type === 'loan'
+                            ? `${r.fullName} · ${r.assetLabel ?? r.customerNo} · ${r.branchCode}`
+                            : `${r.customerNo} · ${r.mobile} · ${r.villageTown ?? r.branchCode}`}
                         </span>
                       </span>
-                      <span className="flex shrink-0 items-center gap-2">
-                        <span className="text-[11px] text-subtle">No active loan</span>
-                        <StatusBadge status={r.kycStatus} />
+                      <span className="flex shrink-0 flex-col items-end gap-0.5">
+                        {(() => {
+                          const l = r.type === 'loan' ? r : r.activeLoan;
+                          if (!l) return <span className="text-[11px] text-subtle">No loan</span>;
+                          if (l.status !== 'ACTIVE') return <span className="text-[11px] text-subtle">{r.type === 'customer' ? `${r.activeLoan!.loanNo} · ` : ''}{l.status.replace(/_/g, ' ').toLowerCase()}</span>;
+                          return (
+                            <>
+                              <span className="num text-[12px] font-medium text-ink-950">{inr(l.outstanding, { decimals: false })} due</span>
+                              <span className="num text-[11px] text-subtle">
+                                {l.dpd > 0 ? <span className="text-bad">{l.dpd} DPD</span> : l.nextDueDate ? `next ${date(l.nextDueDate)}` : ''}
+                              </span>
+                            </>
+                          );
+                        })()}
                       </span>
                     </Link>
                   </li>

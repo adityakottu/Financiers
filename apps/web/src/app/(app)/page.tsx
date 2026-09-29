@@ -1,13 +1,34 @@
 'use client';
 
-import { ArrowUpRight, Clock3, FileWarning, HandCoins, Landmark, Scale, UserPlus, Users, Wallet } from 'lucide-react';
+import { CATEGORY_LABELS } from '@fin/contracts';
+import { ArrowUpRight, CalendarClock, Clock3, FileWarning, HandCoins, Landmark, Scale, UserPlus, Users, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { Card, CardHeader, cx, PageHeader, Spinner, Table, Td, Th } from '@/components/ui';
-import { count } from '@/lib/format';
+import { count, inr } from '@/lib/format';
 import { useApi } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
 
+interface LoanKpis {
+  active: number;
+  closed: number;
+  pipeline: number;
+  awaitingApproval: number;
+  awaitingDisbursal: number;
+  principalOutstanding: string;
+  interestOutstanding: string;
+  receivable: string;
+  overdueAmount: string;
+  overdueLoans: number;
+  totalDisbursed: string;
+  disbursedToday: string;
+  disbursedTodayCount: number;
+  dueTodayCount: number;
+  dueTodayAmount: string;
+  byCategory: { category: string; count: number; outstanding: string }[];
+}
+
 interface Summary {
+  loans: LoanKpis | null;
   customers: { active: number; total: number; kycPending: number; newToday: number } | null;
   staff: { active: number; collectors: number } | null;
   branches: { id: string; code: string; name: string; activeCustomers: number }[];
@@ -64,16 +85,32 @@ export default function DashboardPage() {
           <section>
             <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-muted">Today</h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <Planned label="Total collections" icon={HandCoins} phase={data.availableFrom.collections!} what="Cash, UPI and bank split" />
-              <Planned label="Overdue amount" icon={Clock3} phase={data.availableFrom.loans!} what="From installment schedules" />
-              <Planned label="Reconciliation" icon={Scale} phase={data.availableFrom.reconciliation!} what="Reconciled / pending / difference" />
-              {data.customers ? (
-                <Kpi label="New customers today" value={count(data.customers.newToday)} icon={UserPlus} href="/customers" />
+              {data.loans ? (
+                <Kpi label="Due today" value={inr(data.loans.dueTodayAmount, { decimals: false })} icon={CalendarClock} hint={`${count(data.loans.dueTodayCount)} installments`} />
               ) : (
-                <Planned label="New loans" icon={Landmark} phase={data.availableFrom.loans!} what="Disbursements today" />
+                <Planned label="Due today" icon={CalendarClock} phase="Phase 3" what="Installments falling due" />
               )}
+              <Planned label="Total collections" icon={HandCoins} phase={data.availableFrom.collections!} what="Cash, UPI and bank split" />
+              <Planned label="Reconciliation" icon={Scale} phase={data.availableFrom.reconciliation!} what="Reconciled / pending / difference" />
+              {data.loans ? (
+                <Kpi label="Disbursed today" value={inr(data.loans.disbursedToday, { decimals: false })} icon={Landmark} hint={`${count(data.loans.disbursedTodayCount)} loans`} href="/loans?status=ACTIVE" />
+              ) : data.customers ? (
+                <Kpi label="New customers today" value={count(data.customers.newToday)} icon={UserPlus} href="/customers" />
+              ) : null}
             </div>
           </section>
+
+          {data.loans && (
+            <section>
+              <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-muted">Loan book</h2>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <Kpi label="Outstanding principal" value={inr(data.loans.principalOutstanding, { decimals: false })} icon={Wallet} hint={`${count(data.loans.active)} active loans`} href="/loans?status=ACTIVE" />
+                <Kpi label="Total receivable" value={inr(data.loans.receivable, { decimals: false })} icon={Landmark} hint={`incl. accrued interest ${inr(data.loans.interestOutstanding, { decimals: false })}`} />
+                <Kpi label="Overdue" value={inr(data.loans.overdueAmount, { decimals: false })} icon={Clock3} hint={`${count(data.loans.overdueLoans)} loans past due`} href="/loans?status=ACTIVE&overdueOnly=true" />
+                <Kpi label="In the pipeline" value={count(data.loans.pipeline)} icon={FileWarning} hint={`${count(data.loans.awaitingApproval)} awaiting approval · ${count(data.loans.awaitingDisbursal)} to disburse`} href="/loans?status=PENDING_APPROVAL" />
+              </div>
+            </section>
+          )}
 
           <section>
             <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-muted">Portfolio</h2>
@@ -90,10 +127,36 @@ export default function DashboardPage() {
                   />
                 </>
               )}
-              <Planned label="Outstanding principal" icon={Wallet} phase={data.availableFrom.loans!} what="Active loan book" />
-              <Planned label="Total disbursed" icon={Landmark} phase={data.availableFrom.loans!} what="Since inception" />
+              {data.loans && (
+                <>
+                  <Kpi label="Total disbursed" value={inr(data.loans.totalDisbursed, { decimals: false })} icon={Landmark} hint="Since inception" />
+                  <Kpi label="Closed loans" value={count(data.loans.closed)} icon={Wallet} hint="Fully repaid" />
+                </>
+              )}
             </div>
           </section>
+
+          {data.loans && data.loans.byCategory.length > 0 && (
+            <Card>
+              <CardHeader title="Active loans by category" />
+              <div className="space-y-3 p-5">
+                {(() => {
+                  const max = Math.max(...data.loans.byCategory.map((c) => Number(c.outstanding)), 1);
+                  return data.loans.byCategory.map((c) => (
+                    <div key={c.category} className="grid grid-cols-[120px_1fr_auto] items-center gap-3 text-[13px]">
+                      <span className="text-ink-800">{CATEGORY_LABELS[c.category as keyof typeof CATEGORY_LABELS] ?? c.category}</span>
+                      <span className="h-2.5 overflow-hidden rounded-full bg-canvas">
+                        <span className="block h-full rounded-full bg-accent" style={{ width: `${(Number(c.outstanding) / max) * 100}%` }} />
+                      </span>
+                      <span className="num w-44 text-right text-muted">
+                        {inr(c.outstanding, { decimals: false })} · {c.count} loans
+                      </span>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </Card>
+          )}
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
             {data.branches.length > 0 && (

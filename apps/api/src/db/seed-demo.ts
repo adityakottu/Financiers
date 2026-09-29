@@ -5,6 +5,15 @@ import { loadConfig } from '../config/config';
 import { NumberingService } from '../numbering/numbering.service';
 import { createDb } from './db';
 import { seed } from './seed';
+import { NestFactory } from '@nestjs/core';
+import { ALL_PERMISSIONS } from '@fin/contracts';
+import { AppModule } from '../app.module';
+import type { RequestContext } from '../auth/context';
+import { istToday } from '../common/dates';
+import { DB_TOKEN, Db } from './db';
+import { JobsService } from '../jobs/jobs.service';
+import { LedgerService } from '../ledger/ledger.service';
+import { LoansService } from '../lending/loans.service';
 
 /**
  * Synthetic demo data for local development and UI review (doc 12 §9).
@@ -26,6 +35,7 @@ const JOBS = ['Auto driver', 'Kirana shop owner', 'Farmer', 'Tailor', 'Lorry own
 const pick = <T>(a: T[], i: number) => a[i % a.length]!;
 
 async function main() {
+  await import('reflect-metadata');
   const config = loadConfig();
   if (config.production) throw new Error('Refusing to load demo data in production');
   const demoPassword = process.env.DEMO_PASSWORD;
@@ -127,7 +137,139 @@ async function main() {
     await tx.insertInto('audit_logs').values({ action: 'system.demo_data_loaded', request_id: randomUUID(), hash: Buffer.alloc(0) }).execute();
   });
   await db.destroy();
+  await seedLoans(config, demoPassword);
   console.log('demo data loaded');
+}
+
+/**
+ * Loans are created through the real services (products, maker-checker approval, disbursement
+ * journals, nightly jobs), so the demo exercises the same code paths as production.
+ */
+async function seedLoans(config: ReturnType<typeof loadConfig>, _pw: string) {
+  const app = await NestFactory.createApplicationContext(AppModule.forRoot(config), { logger: ['error'] });
+  const db = app.get<Db>(DB_TOKEN);
+  const loans = app.get(LoansService);
+  const jobs = app.get(JobsService);
+  const ledger = app.get(LedgerService);
+  if (await db.selectFrom('loans').select('id').executeTakeFirst()) {
+    await app.close();
+    return;
+  }
+  const users = Object.fromEntries((await db.selectFrom('users').select(['id', 'username', 'full_name']).execute()).map((u) => [u.username, u]));
+  const ctx = (username: string): RequestContext => ({
+    auth: {
+      userId: users[username]!.id,
+      username,
+      fullName: users[username]!.full_name,
+      sessionId: null as unknown as string,
+      roles: ['SUPER_ADMIN'],
+      permissions: new Set(ALL_PERMISSIONS),
+      scope: 'ALL',
+      branchIds: [],
+      employeeId: null,
+      restriction: null,
+      reauthAt: null,
+    },
+    ip: '127.0.0.1',
+    userAgent: 'demo-seed',
+    requestId: randomUUID(),
+  });
+  const admin = ctx('admin');
+
+  const base = {
+    rateMin: '12', rateMax: '30', amountMin: '10000', tenureMin: 3, roundingUnit: '1' as const, skipSundays: false,
+    allocationRule: { mode: 'INSTALLMENT_WISE' as const, order: ['PENALTY', 'FEE', 'INTEREST', 'PRINCIPAL'] as ('PENALTY' | 'FEE' | 'INTEREST' | 'PRINCIPAL')[], excessHandling: 'ADVANCE' as const },
+  };
+  const tw = await loans.createProduct(admin, {
+    ...base, code: 'TW-STD', name: '2 Wheeler Standard', category: 'TWO_WHEELER', interestMethod: 'FLAT', rateDefault: '24',
+    amountMax: '250000', tenureMax: 104, allowedFrequencies: ['MONTHLY', 'WEEKLY'], maxLtvPct: '90', approvalLimit: '150000',
+    feeRules: [
+      { code: 'PROCESSING', label: 'Processing fee', basis: 'PCT_OF_PRINCIPAL', value: '2', gstRatePct: '18', mode: 'DEDUCT_FROM_DISBURSAL' },
+      { code: 'DOCUMENTATION', label: 'Documentation fee', basis: 'FLAT', value: '500', gstRatePct: '18', mode: 'ADD_TO_FIRST_INSTALLMENT' },
+    ],
+    penaltyRule: { type: 'FLAT_PER_INSTALLMENT', value: '150', graceDays: 3, cap: null },
+  });
+  const auto = await loans.createProduct(admin, {
+    ...base, code: 'AUTO-3W', name: 'Auto-rickshaw Daily', category: 'THREE_WHEELER', interestMethod: 'FLAT', rateDefault: '26',
+    amountMax: '400000', tenureMax: 400, allowedFrequencies: ['DAILY', 'WEEKLY'], skipSundays: true, maxLtvPct: '85', approvalLimit: '300000',
+    feeRules: [{ code: 'PROCESSING', label: 'Processing fee', basis: 'FLAT', value: '2500', gstRatePct: '18', mode: 'DEDUCT_FROM_DISBURSAL' }],
+    penaltyRule: { type: 'PCT_PA_ON_OVERDUE', value: '24', graceDays: 2, cap: null },
+  });
+  const elec = await loans.createProduct(admin, {
+    ...base, code: 'ELEC', name: 'Consumer Electronics EMI', category: 'ELECTRONICS', interestMethod: 'REDUCING_EMI', rateDefault: '18',
+    amountMin: '5000', amountMax: '150000', tenureMax: 24, allowedFrequencies: ['MONTHLY'],
+    feeRules: [{ code: 'PROCESSING', label: 'Processing fee', basis: 'FLAT', value: '499', gstRatePct: '18', mode: 'ADD_TO_FIRST_INSTALLMENT' }],
+    penaltyRule: { type: 'FLAT_PER_INSTALLMENT', value: '100', graceDays: 5, cap: null },
+  });
+
+  let bank!: { id: string };
+  await db.transaction().execute(async (tx) => {
+    bank = await ledger.createBankAccount(tx, { name: 'SBI Current A/c — Kakinada', bankName: 'State Bank of India', branchName: 'Kakinada Main', accountNumber: '30112233445', ifsc: 'SBIN0000812', kind: 'CURRENT' }, users.admin!.id);
+  });
+
+  const customers = await db.selectFrom('customers as c').innerJoin('branches as b', 'b.id', 'c.branch_id').select(['c.id', 'b.code']).orderBy('c.customer_no').execute();
+  await db.updateTable('customers').set({ kyc_status: 'VERIFIED' }).where('id', 'in', customers.slice(0, 26).map((c) => c.id)).execute();
+  const today = istToday();
+  const makes = [['Hero', 'Splendor Plus'], ['Honda', 'Shine 125'], ['TVS', 'Jupiter'], ['Bajaj', 'Platina 110'], ['Hero', 'HF Deluxe']];
+  const tvs = [['Samsung', 'Crystal 4K 43"', 'LED TV'], ['LG', '260L Frost-free', 'Refrigerator'], ['Whirlpool', '7kg Top Load', 'Washing machine'], ['Voltas', '1.5T Inverter', 'Split AC']];
+
+  // plan: [product, months ago disbursed (null = not disbursed), final status, principal, frequency, installments]
+  const plan: [string, number | null, string, string, string, number][] = [
+    ['tw', 5, 'ACTIVE', '85000', 'MONTHLY', 24], ['tw', 4, 'ACTIVE', '110000', 'MONTHLY', 24], ['tw', 3, 'ACTIVE', '72000', 'MONTHLY', 18],
+    ['tw', 2, 'ACTIVE', '95000', 'MONTHLY', 24], ['tw', 1, 'ACTIVE', '60000', 'WEEKLY', 52], ['tw', 0, 'ACTIVE', '98000', 'MONTHLY', 24],
+    ['elec', 4, 'ACTIVE', '42000', 'MONTHLY', 12], ['elec', 2, 'ACTIVE', '28500', 'MONTHLY', 9], ['elec', 1, 'ACTIVE', '64000', 'MONTHLY', 12],
+    ['auto', 2, 'ACTIVE', '280000', 'DAILY', 300], ['auto', 1, 'ACTIVE', '240000', 'WEEKLY', 104],
+    ['tw', null, 'PENDING_APPROVAL', '90000', 'MONTHLY', 24], ['elec', null, 'PENDING_APPROVAL', '35000', 'MONTHLY', 12], ['auto', null, 'PENDING_APPROVAL', '320000', 'DAILY', 330],
+    ['tw', null, 'APPROVED', '76000', 'MONTHLY', 18], ['elec', null, 'APPROVED', '22000', 'MONTHLY', 6],
+    ['tw', null, 'DRAFT', '100000', 'MONTHLY', 24], ['tw', null, 'REJECTED', '150000', 'MONTHLY', 36],
+  ];
+  const products: Record<string, { id: string }> = { tw, auto, elec };
+  const addMonths = (d: string, n: number) => {
+    const t = new Date(`${d}T00:00:00Z`);
+    t.setUTCMonth(t.getUTCMonth() + n);
+    return t.toISOString().slice(0, 10);
+  };
+  const addDays = (d: string, n: number) => new Date(new Date(`${d}T00:00:00Z`).getTime() + n * 86_400_000).toISOString().slice(0, 10);
+
+  for (let i = 0; i < plan.length; i++) {
+    const [pk, monthsAgo, status, principal, frequency, n] = plan[i]!;
+    const c = customers[i]!;
+    const maker = ctx(c.code === 'RJY' ? 'manager.rjy' : 'manager.kkd');
+    const start = monthsAgo === null ? today : addMonths(today, -monthsAgo);
+    const firstDue = frequency === 'DAILY' ? addDays(start, 1) : frequency === 'WEEKLY' ? addDays(start, 7) : addMonths(start, 1);
+    const isElec = pk === 'elec';
+    const [make, model, desc] = isElec ? tvs[i % tvs.length]! : pk === 'auto' ? ['Bajaj', 'RE Compact', undefined] : makes[i % makes.length]!;
+    const assetValue = String(Math.round((Number(principal) / (isElec ? 0.8 : 0.82)) / 1000) * 1000);
+    const asset = isElec
+      ? { description: desc, make, model, serialNo: `SN${2026000 + i}`, assetValue, dealerName: 'Sri Lakshmi Electronics', hypothecationMarked: false }
+      : {
+          make, model, manufactureYear: 2026, registrationNo: `AP${c.code === 'RJY' ? '05' : '39'}${pk === 'auto' ? 'TA' : 'BK'}${String(4100 + i * 37).slice(-4)}`,
+          chassisNo: `MB${pk === 'auto' ? 'LAU' : 'LHA'}${String(740000 + i * 911)}X`, engineNo: `E${String(530000 + i * 733)}K`,
+          vehicleType: pk === 'auto' ? 'Passenger auto-rickshaw' : undefined, assetValue, dealerName: 'Godavari Motors', insurer: 'New India Assurance',
+          insurancePolicyNo: `NIA/${24000 + i}`, insuranceExpiry: addMonths(start, 12), hypothecationMarked: true,
+        };
+    const loan = await db.transaction().execute((tx) =>
+      loans.create(tx, maker, {
+        customerId: c.id, productId: products[pk]!.id, principal, annualRate: pk === 'elec' ? '18' : pk === 'auto' ? '26' : '24',
+        frequency: frequency as 'MONTHLY', numInstallments: n, disbursementDate: start, firstDueDate: firstDue, asset: asset as never,
+      }),
+    );
+    if (status === 'DRAFT') continue;
+    await loans.submit(maker, loan.id);
+    if (status === 'PENDING_APPROVAL') continue;
+    if (status === 'REJECTED') {
+      await loans.reject(admin, loan.id, 'Income proof does not support this amount');
+      continue;
+    }
+    await loans.approve(admin, loan.id, 'Documents verified');
+    if (status === 'APPROVED') continue;
+    await db.transaction().execute((tx) => loans.disburse(tx, maker, loan.id, { accountId: bank.id, mode: 'BANK_TRANSFER', reference: `UTR${String(88120000 + i * 173)}`, disbursedOn: start }));
+  }
+  // No payments are faked: collections start in Phase 4, so overdue figures here are real.
+  // Catch up end-of-day for the last 10 days so statuses, accruals and penalties are realistic.
+  await db.deleteFrom('job_runs').execute();
+  for (let k = 10; k >= 0; k--) await jobs.runDaily(addDays(today, -k), { userId: null });
+  await app.close();
 }
 
 main().catch((e) => {

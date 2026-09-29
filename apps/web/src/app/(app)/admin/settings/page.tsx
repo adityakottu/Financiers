@@ -5,6 +5,7 @@ import { useToast } from '@/components/toast';
 import { Alert, Button, Card, CardHeader, EmptyState, Field, Input, PageHeader, Spinner, Table, Td, Textarea, Th } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
 import { useApi } from '@/lib/hooks';
+import { date, dateTime, inr } from '@/lib/format';
 import { useSession } from '@/lib/session';
 
 interface Company {
@@ -35,6 +36,7 @@ export default function SettingsPage() {
       <div className="space-y-6">
         <CompanyCard />
         {can('settings.numbering') && <NumberingCard />}
+        {can('jobs.run') && <EndOfDayCard />}
       </div>
     </>
   );
@@ -190,6 +192,72 @@ function NumberingCard() {
                     </Button>
                   )}
                 </Td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+    </Card>
+  );
+}
+
+interface JobRun {
+  business_date: string;
+  status: string;
+  finished_at: string | null;
+  details: { statusesUpdated: number; interestAccrued: number; accrualEntries: number; penaltiesAssessed: number; penaltyAmount: string } | null;
+}
+
+function EndOfDayCard() {
+  const toast = useToast();
+  const { data, loading, reload } = useApi<{ data: JobRun[] }>('/jobs/daily');
+  const [busy, setBusy] = useState(false);
+  async function run() {
+    setBusy(true);
+    try {
+      const r = await api<{ skipped?: boolean; date: string }>('POST', '/jobs/daily', { body: {} });
+      toast('ok', r.skipped ? `End-of-day for ${r.date} had already run` : `End-of-day completed for ${r.date}`);
+      reload();
+    } catch (e) {
+      toast('bad', (e as ApiError).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card>
+      <CardHeader
+        title="End-of-day processing"
+        description="Runs automatically after midnight (IST): updates installment status, accrues interest falling due, assesses penal charges and refreshes loan balances. Safe to repeat — a finished day is skipped."
+        actions={
+          <Button size="sm" variant="secondary" onClick={run} loading={busy}>
+            Run for today
+          </Button>
+        }
+      />
+      {loading || !data ? (
+        <Spinner />
+      ) : data.data.length === 0 ? (
+        <p className="p-5 text-[13px] text-muted">No runs yet.</p>
+      ) : (
+        <Table>
+          <thead>
+            <tr>
+              <Th>Business date</Th>
+              <Th className="text-right">Installments updated</Th>
+              <Th className="text-right">Interest accrued</Th>
+              <Th className="text-right">Penal charges</Th>
+              <Th>Finished</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.data.map((r) => (
+              <tr key={r.business_date}>
+                <Td className="num">{date(r.business_date)}</Td>
+                <Td className="num text-right">{r.details?.statusesUpdated ?? '—'}</Td>
+                <Td className="num text-right">{r.details ? `${r.details.interestAccrued} installments` : '—'}</Td>
+                <Td className="num text-right">{r.details ? `${r.details.penaltiesAssessed} · ${inr(r.details.penaltyAmount)}` : '—'}</Td>
+                <Td className="text-[12px] text-muted">{r.finished_at ? dateTime(r.finished_at) : r.status}</Td>
               </tr>
             ))}
           </tbody>

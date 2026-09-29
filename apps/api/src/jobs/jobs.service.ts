@@ -36,6 +36,8 @@ export interface DailyResult {
 export class JobsService implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly log = new Logger('Jobs');
   private timer?: NodeJS.Timeout;
+  private startup?: NodeJS.Timeout;
+  private stopped = false;
 
   constructor(
     @Inject(DB_TOKEN) private readonly db: Db,
@@ -48,12 +50,17 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
   onApplicationBootstrap() {
     if (this.config.env === 'test') return;
     // Check every 10 minutes; after 00:05 IST, run any business dates not yet processed.
-    this.timer = setInterval(() => void this.catchUp().catch((e) => this.log.error(e)), 10 * 60_000);
-    setTimeout(() => void this.catchUp().catch((e) => this.log.error(e)), 5_000);
+    const tick = () => {
+      if (!this.stopped) void this.catchUp().catch((e) => this.log.error(e));
+    };
+    this.timer = setInterval(tick, 10 * 60_000);
+    this.startup = setTimeout(tick, 5_000);
   }
 
   onApplicationShutdown() {
+    this.stopped = true;
     if (this.timer) clearInterval(this.timer);
+    if (this.startup) clearTimeout(this.startup);
   }
 
   async catchUp(actor: AuditActor = { userId: null }) {

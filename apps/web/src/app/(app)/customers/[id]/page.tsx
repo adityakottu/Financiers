@@ -26,6 +26,7 @@ import { api, ApiError } from '@/lib/api';
 import { date, dateTime, inr, titleCase } from '@/lib/format';
 import { useApi } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
+import { LoanStatusBadge } from '@/components/lending';
 
 interface KycDoc {
   docType: string;
@@ -127,7 +128,7 @@ export default function CustomerPage({ params }: { params: Promise<{ id: string 
           ['KYC', <StatusBadge key="k" status={c.kycStatus} />],
           ['Mobile', <span key="m" className="num">{c.mobile}</span>],
           ['WhatsApp', c.whatsappOptIn ? <Badge key="w" tone="ok">Consented</Badge> : <Badge key="w">No consent</Badge>],
-          ['Active loan', <span key="l" className="text-subtle">— (Phase 3)</span>],
+          ['Active loan', <ActiveLoan key="l" customerId={c.id} />],
         ].map(([label, value]) => (
           <Card key={label as string} className="px-4 py-3">
             <p className="text-[12px] font-medium uppercase tracking-wide text-subtle">{label}</p>
@@ -197,11 +198,7 @@ export default function CustomerPage({ params }: { params: Promise<{ id: string 
         )}
         {tab === 'kyc' && c.kyc && <KycPanel customer={c} onChange={reload} />}
         {tab === 'documents' && <DocumentsPanel customer={c} onChange={reload} />}
-        {tab === 'loans' && (
-          <Card>
-            <EmptyState icon={<Landmark className="size-8" />} title="Loans arrive in Phase 3" body="Loan creation, schedules, statements and the loan summary on this page are built next." />
-          </Card>
-        )}
+        {tab === 'loans' && <CustomerLoans customerId={c.id} />}
         {tab === 'timeline' && <Timeline id={c.id} />}
       </div>
     </>
@@ -467,6 +464,86 @@ function Timeline({ id }: { id: string }) {
         ))}
       </ol>
       <p className="mt-6 text-[12px] text-subtle">Loan, payment, receipt, SMS/WhatsApp and visit events join this history as those modules arrive.</p>
+    </Card>
+  );
+}
+
+interface LoanRow {
+  id: string;
+  loan_no: string;
+  status: string;
+  category: string;
+  principal: string;
+  balance_payable: string;
+  next_due_date: string | null;
+  next_due_amount: string | null;
+  dpd: number;
+  asset_label: string | null;
+  created_at: string;
+}
+
+function useCustomerLoans(customerId: string) {
+  return useApi<{ data: LoanRow[] }>(`/loans?customerId=${customerId}&limit=50`);
+}
+
+function ActiveLoan({ customerId }: { customerId: string }) {
+  const { can } = useSession();
+  const { data } = useCustomerLoans(customerId);
+  if (!can('loan.view')) return <span className="text-subtle">—</span>;
+  const l = data?.data.find((x) => x.status === 'ACTIVE');
+  if (!data) return <span className="text-subtle">…</span>;
+  if (!l) return <span className="text-subtle">None</span>;
+  return (
+    <Link href={`/loans/${l.id}`} className="num hover:underline">
+      {inr(l.balance_payable, { decimals: false })} {l.dpd > 0 ? <Badge tone="bad">{l.dpd} DPD</Badge> : null}
+    </Link>
+  );
+}
+
+function CustomerLoans({ customerId }: { customerId: string }) {
+  const { can } = useSession();
+  const { data, loading } = useCustomerLoans(customerId);
+  return (
+    <Card>
+      <CardHeader
+        title="Loans"
+        actions={
+          can('loan.create') && (
+            <Link href={`/loans/new?customerId=${customerId}`}>
+              <Button size="sm">New loan</Button>
+            </Link>
+          )
+        }
+      />
+      {loading || !data ? (
+        <Spinner />
+      ) : data.data.length === 0 ? (
+        <EmptyState icon={<Landmark className="size-8" />} title="No loans yet" />
+      ) : (
+        <ul className="divide-y divide-line">
+          {data.data.map((l) => (
+            <li key={l.id}>
+              <Link href={`/loans/${l.id}`} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 hover:bg-canvas/60">
+                <div>
+                  <p className="num font-mono text-[13px] font-medium text-ink-950">{l.loan_no}</p>
+                  <p className="text-[12px] text-muted">
+                    {inr(l.principal, { decimals: false })} · {l.asset_label ?? '—'} · since {date(l.created_at)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 text-right">
+                  {l.status === 'ACTIVE' && (
+                    <span className="text-[12px] text-muted">
+                      Outstanding <span className="num font-medium text-ink-950">{inr(l.balance_payable)}</span>
+                      {l.next_due_date && <span className="block">next {date(l.next_due_date)} · {inr(l.next_due_amount)}</span>}
+                    </span>
+                  )}
+                  <LoanStatusBadge status={l.status} />
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </Card>
   );
 }

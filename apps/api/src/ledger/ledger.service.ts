@@ -6,7 +6,7 @@ import { notFound, unprocessable } from '../common/errors';
 import { DB_TOKEN, Db, Executor, Tx } from '../db/db';
 import { NumberingService } from '../numbering/numbering.service';
 
-export type EntryType = 'DISBURSEMENT' | 'FEE' | 'PAYMENT' | 'ACCRUAL' | 'PENALTY' | 'ADJUSTMENT' | 'REVERSAL' | 'OPENING' | 'MANUAL';
+export type EntryType = 'DISBURSEMENT' | 'FEE' | 'PAYMENT' | 'ACCRUAL' | 'PENALTY' | 'EXPENSE' | 'DEPOSIT' | 'TRANSFER' | 'ADJUSTMENT' | 'REVERSAL' | 'OPENING' | 'MANUAL';
 
 export interface PostingLine {
   /** Account code (e.g. '1310') or id. */
@@ -28,6 +28,7 @@ export interface Posting {
   narration: string;
   lines: PostingLine[];
   createdBy: string | null;
+  approvedBy?: string | null;
   reversesEntryId?: string;
 }
 
@@ -88,6 +89,17 @@ export class LedgerService {
     if (lines.length < 2 || !dr.eq(cr)) {
       throw new Error(`Unbalanced posting for ${p.sourceType}:${p.sourceId} (Dr ${dr.toString()} / Cr ${cr.toString()})`);
     }
+    // The database refuses postings into locked months; say so clearly before it does.
+    const period = await tx
+      .selectFrom('accounting_periods')
+      .select(['status', 'period_start'])
+      .where('period_start', '<=', p.valueDate)
+      .where('period_end', '>=', p.valueDate)
+      .executeTakeFirst();
+    if (period?.status === 'LOCKED') throw unprocessable('PERIOD_LOCKED', `The books for ${period.period_start.slice(0, 7)} are locked. Post it in an open month, or ask Management to reopen the month.`);
+    if (period?.status === 'SOFT_LOCKED' && !['ADJUSTMENT', 'REVERSAL'].includes(p.entryType)) {
+      throw unprocessable('PERIOD_SOFT_LOCKED', `The books for ${period.period_start.slice(0, 7)} are closed for new entries (only adjustments and reversals).`);
+    }
     const entryNo = await this.numbering.next(tx, 'JOURNAL');
     const entry = await tx
       .insertInto('journal_entries')
@@ -101,6 +113,7 @@ export class LedgerService {
         narration: p.narration,
         reverses_entry_id: p.reversesEntryId ?? null,
         created_by: p.createdBy,
+        approved_by: p.approvedBy ?? null,
       })
       .returning('id')
       .executeTakeFirstOrThrow();

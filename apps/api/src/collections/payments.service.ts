@@ -706,6 +706,149 @@ export class PaymentsService {
     return { journalId: rev.id, journalNo: rev.entryNo, reopened, undone };
   }
 
+  /* =========================== Cheques (doc 07 E8) =========================== */
+
+  private async chequeForUpdate(tx: Tx, auth: AuthContext, paymentId: string) {
+    const head = await tx.selectFrom('payments').select(['loan_id', 'method']).where('id', '=', paymentId).executeTakeFirst();
+    if (!head || head.method !== 'CHEQUE') throw notFound('Cheque');
+    const loan = await this.lockLoan(tx, auth, head.loan_id);
+    const p = await this.paymentForUpdate(tx, auth, paymentId);
+    return { loan, p };
+  }
+
+  /** Cheque paid into the bank: Dr Bank / Cr Cheques in hand. The payment itself is unchanged. */
+  async depositCheque(ctx: RequestContext, paymentId: string, input: { accountId: string; depositedOn: string }) {
+    if (input.depositedOn > istToday()) throw unprocessable('FUTURE_DATE', 'The deposit date cannot be in the future');
+    return this.db.transaction().execute(async (tx) => {
+      const { loan, p } = await this.chequeForUpdate(tx, ctx.auth, paymentId);
+      if (p.status !== 'POSTED' || p.cheque_status !== 'RECEIVED') throw conflict('INVALID_STATE', `This cheque is ${(p.cheque_status ?? '').toLowerCase()}${p.status !== 'POSTED' ? ` and the payment is ${p.status.toLowerCase().replace('_', ' ')}` : ''}`);
+      if (input.depositedOn < p.value_date) throw unprocessable('VALIDATION_FAILED', 'A cheque cannot be deposited before it was received');
+      const bank = await tx.selectFrom('accounts').select(['id', 'code']).where('id', '=', input.accountId).where('subtype', '=', 'BANK').where('is_active', '=', true).executeTakeFirst();
+      if (!bank) throw unprocessable('ACCOUNT_MISMATCH', 'Choose one of the company bank accounts');
+      const amount = Money.of(p.amount);
+      const entry = await this.ledger.post(tx, {
+        entryType: 'DEPOSIT',
+        valueDate: input.depositedOn,
+        branchId: p.branch_id,
+        sourceType: 'cheque_deposit',
+        sourceId: p.id,
+        narration: `Cheque ${p.reference_no} (${p.payment_no}, loan ${loan.loan_no}) deposited`,
+        lines: [
+          { account: bank.id, debit: amount, loanId: loan.id, memo: `Cheque ${p.reference_no}` },
+          { account: p.debit_account_id, credit: amount, loanId: loan.id, memo: `Cheque ${p.reference_no}` },
+        ],
+        createdBy: ctx.auth.userId,
+      });
+      await tx
+        .updateTable('payments')
+        .set({ cheque_status: 'DEPOSITED', cheque_deposit_account_id: bank.id, cheque_deposited_on: input.depositedOn, cheque_deposit_journal_id: entry.id })
+        .where('id', '=', p.id)
+        .execute();
+      await this.audit.record(tx, ctx, { action: 'cheque.deposited', entityType: 'payment', entityId: p.id, branchId: p.branch_id, oldValues: { chequeStatus: 'RECEIVED' }, newValues: { chequeStatus: 'DEPOSITED', bank: bank.code, journal: entry.entryNo } });
+      return { id: p.id, chequeStatus: 'DEPOSITED', journalEntryNo: entry.entryNo };
+    });
+  }
+
+  async clearCheque(ctx: RequestContext, paymentId: string, clearedOn: string) {
+    return this.db.transaction().execute(async (tx) => {
+      const { p } = await this.chequeForUpdate(tx, ctx.auth, paymentId);
+      if (p.cheque_status !== 'DEPOSITED') throw conflict('INVALID_STATE', 'Only deposited cheques can be marked cleared');
+      if (clearedOn < p.cheque_deposited_on! || clearedOn > istToday()) throw unprocessable('VALIDATION_FAILED', 'The clearing date must be between the deposit date and today');
+      await tx.updateTable('payments').set({ cheque_status: 'CLEARED', cheque_cleared_on: clearedOn }).where('id', '=', p.id).execute();
+      await this.audit.record(tx, ctx, { action: 'cheque.cleared', entityType: 'payment', entityId: p.id, branchId: p.branch_id, oldValues: { chequeStatus: 'DEPOSITED' }, newValues: { chequeStatus: 'CLEARED', clearedOn } });
+      return { id: p.id, chequeStatus: 'CLEARED' };
+    });
+  }
+
+  /**
+   * Bounced cheque: the money never arrived. Undo the bank deposit (if any), reverse the payment
+   * exactly like an approved reversal (installments restored, receipt cancelled), then optionally
+   * charge the bounce fee to the loan (Dr Fees receivable / Cr Other charges) ⚖.
+   */
+  async bounceCheque(ctx: RequestContext, paymentId: string, input: { bouncedOn: string; reason: string; charge?: string }) {
+    return this.db.transaction().execute(async (tx) => {
+      const { loan, p } = await this.chequeForUpdate(tx, ctx.auth, paymentId);
+      if (!['RECEIVED', 'DEPOSITED'].includes(p.cheque_status ?? '')) throw conflict('INVALID_STATE', `This cheque is ${(p.cheque_status ?? '').toLowerCase()}`);
+      if (p.status !== 'POSTED') throw conflict('INVALID_STATE', 'Decide the pending reversal of this payment first');
+      if (input.bouncedOn > istToday()) throw unprocessable('FUTURE_DATE', 'The bounce date cannot be in the future');
+      const today = istToday();
+      if (p.cheque_status === 'DEPOSITED') {
+        await this.ledger.reverse(tx, p.cheque_deposit_journal_id!, { valueDate: today, narration: `Cheque ${p.reference_no} bounced — bank deposit undone`, createdBy: ctx.auth.userId, sourceType: 'cheque_deposit', sourceId: p.id });
+      }
+      const rev = await tx
+        .insertInto('payment_reversals')
+        .values({ payment_id: p.id, reason_code: 'CHEQUE_BOUNCED', reason_text: input.reason, requested_by: ctx.auth.userId, status: 'APPROVED', decided_by: ctx.auth.userId, decided_at: new Date(), decision_note: `Bounced on ${input.bouncedOn}` })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      const result = await this.executeReversal(tx, ctx, loan, p, rev.id, `Cheque ${p.reference_no} bounced: ${input.reason}`);
+      await tx.updateTable('payment_reversals').set({ reversal_journal_entry_id: result.journalId }).where('id', '=', rev.id).execute();
+      await tx.updateTable('payments').set({ cheque_status: 'BOUNCED', cheque_bounced_on: input.bouncedOn }).where('id', '=', p.id).execute();
+
+      let chargeEntry: string | null = null;
+      if (input.charge && Money.of(input.charge).isPositive()) {
+        const charge = Money.of(input.charge);
+        const target = await tx
+          .selectFrom('loan_installments')
+          .select(['id', 'installment_no'])
+          .where('loan_id', '=', loan.id)
+          .where('status', 'not in', ['WAIVED', 'RESCHEDULED'])
+          .where(sql<boolean>`total_paid < total_due`)
+          .orderBy('due_date')
+          .executeTakeFirst();
+        if (!target) throw unprocessable('NOTHING_OPEN', 'The loan has no open installment to add the charge to');
+        const c = await tx
+          .insertInto('loan_charges')
+          .values({ loan_id: loan.id, installment_id: target.id, charge_type: 'FEE', code: 'CHEQUE_BOUNCE', description: `Cheque ${p.reference_no} bounced`, amount: charge.toString(), assessed_on: today, status: 'OPEN', collection_mode: 'ADD_TO_INSTALLMENT' })
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        const entry = await this.ledger.post(tx, {
+          entryType: 'FEE',
+          valueDate: today,
+          branchId: p.branch_id,
+          sourceType: 'loan_charge',
+          sourceId: c.id,
+          narration: `Cheque bounce charge on loan ${loan.loan_no} (cheque ${p.reference_no})`,
+          lines: [
+            { account: GL.FEES_RECEIVABLE, debit: charge, loanId: loan.id, customerId: loan.customer_id, memo: `Installment ${target.installment_no}` },
+            { account: GL.feeIncome('OTHER'), credit: charge, loanId: loan.id, memo: 'Cheque bounce charge' },
+          ],
+          createdBy: ctx.auth.userId,
+        });
+        await tx.updateTable('loan_charges').set({ journal_entry_id: entry.id }).where('id', '=', c.id).execute();
+        await tx.updateTable('loan_installments').set((eb) => ({ fees_due: eb('fees_due', '+', charge.toString()) })).where('id', '=', target.id).execute();
+        await rollStatuses(tx, today, [loan.id]);
+        await this.loans.refreshBalances(tx, [loan.id], today);
+        chargeEntry = entry.entryNo;
+      }
+      await this.audit.record(tx, ctx, {
+        action: 'cheque.bounced',
+        entityType: 'payment',
+        entityId: p.id,
+        branchId: p.branch_id,
+        oldValues: { chequeStatus: p.cheque_status, status: 'POSTED' },
+        newValues: { chequeStatus: 'BOUNCED', status: 'REVERSED', reason: input.reason, reversal: result.journalNo, charge: input.charge ?? null, chargeJournal: chargeEntry },
+      });
+      return { id: p.id, chequeStatus: 'BOUNCED', reversalJournalNo: result.journalNo, chargeJournalNo: chargeEntry, loanReopened: result.reopened };
+    });
+  }
+
+  async cheques(auth: AuthContext, status?: string) {
+    let sel = this.loans
+      .scoped(this.db, auth)
+      .innerJoin('payments as p', 'p.loan_id', 'l.id')
+      .leftJoin('accounts as a', 'a.id', 'p.cheque_deposit_account_id')
+      .select([
+        'p.id', 'p.payment_no', 'p.amount', 'p.reference_no', 'p.cheque_bank', 'p.cheque_date', 'p.cheque_status', 'p.status', 'p.received_at', 'p.value_date',
+        'p.cheque_deposited_on', 'p.cheque_cleared_on', 'p.cheque_bounced_on', 'a.name as deposit_account',
+        'l.id as loan_id', 'l.loan_no', 'c.full_name as customer_name', 'b.code as branch_code',
+      ])
+      .where('p.method', '=', 'CHEQUE')
+      .orderBy('p.received_at', 'desc')
+      .limit(300);
+    if (status) sel = sel.where('p.cheque_status', '=', status);
+    return sel.execute();
+  }
+
   /* =========================== Reads =========================== */
 
   async list(auth: AuthContext, q: { limit: number; cursor?: string; loanId?: string; customerId?: string; collectorId?: string; branchId?: string; method?: string; status?: string; from?: string; to?: string; q?: string }) {

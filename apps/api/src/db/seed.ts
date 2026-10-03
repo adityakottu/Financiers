@@ -12,6 +12,7 @@ export const DEFAULT_NUMBERING: Record<string, string> = {
   JOURNAL: 'JE-{FY}-{SEQ:6}',
   EXPENSE: 'EXP-{FY}-{SEQ:6}',
   ASSET: 'AST-{FY}-{SEQ:6}',
+  DEPOSIT: 'DEP-{FY}-{SEQ:6}',
 };
 
 /** Reference data that must match the code: permissions, system roles and their grants. Safe to re-run. */

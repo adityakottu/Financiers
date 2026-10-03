@@ -36,6 +36,11 @@ import { CollectionsService } from './collections/collections.service';
 import { PaymentsService } from './collections/payments.service';
 import { MessagesController, ReminderRulesController, TemplatesController, WebhooksController } from './messaging/messaging.controller';
 import { MessagingService } from './messaging/messaging.service';
+import { BankingController, BooksController, ExpensesController, JournalsController } from './accounting/accounting.controller';
+import { BankingService } from './accounting/banking.service';
+import { BooksService } from './accounting/books.service';
+import { ExpensesService } from './accounting/expenses.service';
+import { JournalsService } from './accounting/journals.service';
 
 @Controller('health')
 class HealthController {
@@ -95,6 +100,10 @@ export class AppModule implements NestModule {
         TemplatesController,
         ReminderRulesController,
         WebhooksController,
+        ExpensesController,
+        BankingController,
+        JournalsController,
+        BooksController,
       ],
       providers: [
         { provide: CONFIG, useValue: config },
@@ -115,6 +124,10 @@ export class AppModule implements NestModule {
         MessagingService,
         PaymentsService,
         CollectionsService,
+        ExpensesService,
+        BankingService,
+        JournalsService,
+        BooksService,
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_GUARD, useClass: AuthGuard },
       ],

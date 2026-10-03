@@ -33,7 +33,12 @@ export interface AccountingPeriods {
   locked_by: string | null;
   period_end: string;
   period_start: string;
+  soft_locked_at: Timestamp | null;
+  soft_locked_by: string | null;
   status: Generated<string>;
+  unlock_reason: string | null;
+  unlocked_at: Timestamp | null;
+  unlocked_by: string | null;
 }
 
 export interface Accounts {
@@ -173,6 +178,29 @@ export interface Branches {
   updated_at: Generated<Timestamp>;
   updated_by: string | null;
   version: Generated<number>;
+}
+
+export interface CashDeposits {
+  amount: Numeric;
+  branch_id: string;
+  deposit_no: string;
+  deposited_on: string;
+  employee_id: string | null;
+  file_id: string | null;
+  from_account_id: string;
+  id: Generated<string>;
+  journal_entry_id: string | null;
+  notes: string | null;
+  reconciliation_status: Generated<string>;
+  recorded_at: Generated<Timestamp>;
+  recorded_by: string;
+  reversal_journal_entry_id: string | null;
+  reverse_reason: string | null;
+  reversed_at: Timestamp | null;
+  reversed_by: string | null;
+  slip_no: string | null;
+  status: Generated<string>;
+  to_account_id: string;
 }
 
 export interface CollectionAssignments {
@@ -319,6 +347,46 @@ export interface Employees {
   updated_by: string | null;
   user_id: string | null;
   version: Generated<number>;
+}
+
+export interface ExpenseCategories {
+  account_id: string;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  is_active: Generated<boolean>;
+  name: string;
+  requires_bill: Generated<boolean>;
+}
+
+export interface Expenses {
+  amount: Numeric;
+  approved_at: Timestamp | null;
+  approved_by: string | null;
+  bill_no: string | null;
+  branch_id: string;
+  category_id: string;
+  description: string;
+  employee_id: string | null;
+  expense_date: string;
+  expense_no: string;
+  file_id: string | null;
+  id: Generated<string>;
+  journal_entry_id: string | null;
+  paid_from: string;
+  paid_from_account_id: string;
+  posted_at: Timestamp | null;
+  posted_by: string | null;
+  reject_reason: string | null;
+  rejected_at: Timestamp | null;
+  rejected_by: string | null;
+  reversal_journal_entry_id: string | null;
+  reverse_reason: string | null;
+  reversed_at: Timestamp | null;
+  reversed_by: string | null;
+  status: Generated<string>;
+  submitted_at: Generated<Timestamp>;
+  submitted_by: string;
+  vendor: string | null;
 }
 
 export interface Files {
@@ -553,6 +621,22 @@ export interface LoginEvents {
   user_id: string | null;
 }
 
+export interface ManualJournals {
+  branch_id: string | null;
+  created_at: Generated<Timestamp>;
+  created_by: string;
+  decided_at: Timestamp | null;
+  decided_by: string | null;
+  decision_note: string | null;
+  id: Generated<string>;
+  journal_entry_id: string | null;
+  lines: Json;
+  narration: string;
+  status: Generated<string>;
+  total: Numeric;
+  value_date: string;
+}
+
 export interface MessageEvents {
   at: Generated<Timestamp>;
   detail: Generated<Json>;
@@ -682,7 +766,12 @@ export interface Payments {
   branch_id: string;
   business_date: string;
   cheque_bank: string | null;
+  cheque_bounced_on: string | null;
+  cheque_cleared_on: string | null;
   cheque_date: string | null;
+  cheque_deposit_account_id: string | null;
+  cheque_deposit_journal_id: string | null;
+  cheque_deposited_on: string | null;
   cheque_status: string | null;
   collected_by: string | null;
   created_at: Generated<Timestamp>;
@@ -836,6 +925,7 @@ export interface DB {
   audit_logs: AuditLogs;
   bank_accounts: BankAccounts;
   branches: Branches;
+  cash_deposits: CashDeposits;
   collection_assignments: CollectionAssignments;
   collection_visits: CollectionVisits;
   companies: Companies;
@@ -845,6 +935,8 @@ export interface DB {
   customer_references: CustomerReferences;
   customers: Customers;
   employees: Employees;
+  expense_categories: ExpenseCategories;
+  expenses: Expenses;
   files: Files;
   idempotency_keys: IdempotencyKeys;
   job_runs: JobRuns;
@@ -856,6 +948,7 @@ export interface DB {
   loan_products: LoanProducts;
   loans: Loans;
   login_events: LoginEvents;
+  manual_journals: ManualJournals;
   message_events: MessageEvents;
   message_templates: MessageTemplates;
   messages: Messages;

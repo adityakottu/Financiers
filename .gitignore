@@ -8,3 +8,6 @@ coverage/
 !.env.example
 *.log
 .DS_Store
+*.tsbuildinfo
+next-env.d.ts
+apps/api/storage/

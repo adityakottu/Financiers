@@ -3,9 +3,8 @@
 Secure Lending, Collections, Accounting & Reconciliation Management System for an
 asset-backed lending business in India (electronics, 2W, 3W, 4W, buses, lorries/trucks).
 
-> **Status: DRAFT — awaiting approval.** No production code will be written until
-> the decisions in [§ Decisions required](#decisions-required-before-phase-2) are
-> confirmed.
+> **Status: Approved** with the recommended defaults for D1–D10 (D1 and D10 still need
+> CA/legal confirmation). Phases 2–6 are complete — see the [Phase 2](phase-2-report.md), [Phase 3](phase-3-report.md), [Phase 4](phase-4-report.md), [Phase 5](phase-5-report.md) and [Phase 6](phase-6-report.md) reports.
 
 ## The spine of the system
 
@@ -50,6 +49,11 @@ from journal lines or verified against them.
 | 13 | [Deployment Architecture](13-deployment-architecture.md) | Infra, environments, CI/CD |
 | 14 | [Backup & DR](14-backup-dr.md) | RPO/RTO, backups, restore drills |
 | 15 | [Implementation Roadmap](15-implementation-roadmap.md) | Phases 2–8, deliverables, exit criteria |
+| — | [Phase 2 report](phase-2-report.md) | What was built, tested, and carried forward |
+| — | [Phase 3 report](phase-3-report.md) | Lending, assets, ledger core, end-of-day job |
+| — | [Phase 4 report](phase-4-report.md) | Collections, payments, receipts, reversals, messaging |
+| — | [Phase 5 report](phase-5-report.md) | Expenses, deposits, cheques, manual journals, books, month locks |
+| — | [Phase 6 report](phase-6-report.md) | Cash settlement, differences, statement import & matching, day close |
 
 Items marked **⚖ REVIEW** require sign-off from a qualified Indian legal,
 accounting (CA) or compliance professional before go-live. The system is built to

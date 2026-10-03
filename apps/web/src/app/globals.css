@@ -38,6 +38,13 @@
   --radius-card: 10px;
 }
 
+/* Chart roles (dataviz reference palette, slot 1; validated on the white surface: L band, chroma, ≥3:1). */
+:root {
+  --viz-series-1: #2a78d6;
+  --viz-grid: #eef1f5;
+  --viz-axis: #cfd7e2;
+}
+
 @layer base {
   html {
     color: var(--color-text);

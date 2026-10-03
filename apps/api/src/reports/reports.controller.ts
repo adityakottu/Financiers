@@ -25,6 +25,12 @@ export class ReportsController {
   }
 
   @Authenticated()
+  @Get('reports/options')
+  options(@Ctx() ctx: RequestContext) {
+    return this.reports.options(ctx.auth);
+  }
+
+  @Authenticated()
   @Get('reports/ca-pack')
   async caPack(@Ctx() ctx: RequestContext, @Query() q: Record<string, string>, @Res({ passthrough: true }) res: Response) {
     const r = await this.reports.caPack(ctx, q);

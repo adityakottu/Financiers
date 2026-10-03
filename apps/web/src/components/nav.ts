@@ -7,6 +7,7 @@ import {
   Bell,
   Boxes,
   Building2,
+  Gavel,
   CalendarClock,
   FileText,
   HandCoins,
@@ -54,6 +55,7 @@ export const NAV: NavGroup[] = [
       { label: 'My collections', href: '/collect', icon: HandCoins, requires: ['payment.collect'], collectorOnly: true },
       { label: 'Collections', href: '/collections', icon: HandCoins, requires: ['collection.view_team'] },
       { label: 'Installments due', href: '/installments', icon: CalendarClock, requires: ['loan.view'] },
+      { label: 'Recovery', href: '/recovery', icon: Gavel, requires: ['recovery.view'] },
     ],
   },
   {
@@ -66,7 +68,7 @@ export const NAV: NavGroup[] = [
       { label: 'Expenses', href: '/expenses', icon: FileText, requiresAny: ['expense.submit', 'expense.view'] },
       { label: 'Journal', href: '/journals', icon: ScrollText, requires: ['ledger.view'] },
       { label: 'Books', href: '/books', icon: BookOpen, requires: ['ledger.view'] },
-      { label: 'Reports', href: '/reports', icon: BarChart3, phase: 7 },
+      { label: 'Reports', href: '/reports', icon: BarChart3, requiresAny: ['report.loan', 'report.collection', 'report.accounting', 'report.reconciliation'] },
     ],
   },
   {
@@ -77,7 +79,7 @@ export const NAV: NavGroup[] = [
       { label: 'Users & access', href: '/admin/users', icon: ShieldCheck, requires: ['user.manage'] },
       { label: 'Loan products', href: '/admin/products', icon: Package, requires: ['loan.view'] },
       { label: 'Communications', href: '/communications', icon: MessageSquare, requires: ['message.view'] },
-      { label: 'Notifications', href: '/notifications', icon: Bell, phase: 7 },
+      { label: 'Waiting for you', href: '/notifications', icon: Bell },
       { label: 'Audit log', href: '/audit', icon: ScrollText, requires: ['audit.view'] },
       { label: 'Settings', href: '/admin/settings', icon: Settings, requires: ['settings.company'] },
     ],

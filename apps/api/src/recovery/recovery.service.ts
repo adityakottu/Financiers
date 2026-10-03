@@ -396,7 +396,7 @@ export class RecoveryService {
       await tx.updateTable('assets').set({ status: 'REPOSSESSED', updated_at: new Date() }).where('id', '=', a.id).execute();
       await tx.insertInto('asset_events').values({ asset_id: a.id, from_status: 'ACTIVE', to_status: 'REPOSSESSED', reason: `Recovery case ${rc.case_no}: kept at ${input.location}`, actor_id: ctx.auth.userId }).execute();
       const label = this.assetLabel(a);
-      await this.act(tx, rc.id, ctx.auth.userId, 'REPOSSESSED', `${label} repossessed on ${input.repossessedOn}, kept at ${input.location}`, { assetId: a.id, valuation: input.valuation ?? null });
+      await this.act(tx, rc.id, ctx.auth.userId, 'REPOSSESSED', `${label} repossessed on ${input.repossessedOn.split('-').reverse().join('/')}, kept at ${input.location}`, { assetId: a.id, valuation: input.valuation ?? null });
       await this.loans.event(tx, rc.customer_id, rc.loan_id, ctx.auth.userId, 'ASSET_REPOSSESSED', `${label} repossessed (case ${rc.case_no})`);
       await this.audit.record(tx, ctx, { action: 'asset.repossessed', entityType: 'asset', entityId: a.id, branchId: rc.branch_id, oldValues: { status: 'ACTIVE' }, newValues: { status: 'REPOSSESSED', on: input.repossessedOn, location: input.location, valuation: input.valuation ?? null } });
       return { ok: true };

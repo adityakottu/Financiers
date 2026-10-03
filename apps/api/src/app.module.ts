@@ -49,6 +49,8 @@ import { RecoveryService } from './recovery/recovery.service';
 import { ReportsController } from './reports/reports.controller';
 import { ReportsService } from './reports/reports.service';
 import { DashboardService } from './dashboard/dashboard.service';
+import { InboxService } from './dashboard/inbox.service';
+import { NotificationsController } from './dashboard/notifications.controller';
 
 @Controller('health')
 class HealthController {
@@ -115,6 +117,7 @@ export class AppModule implements NestModule {
         ReconciliationController,
         RecoveryController,
         ReportsController,
+        NotificationsController,
       ],
       providers: [
         { provide: CONFIG, useValue: config },
@@ -144,6 +147,7 @@ export class AppModule implements NestModule {
         RecoveryService,
         ReportsService,
         DashboardService,
+        InboxService,
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_GUARD, useClass: AuthGuard },
       ],

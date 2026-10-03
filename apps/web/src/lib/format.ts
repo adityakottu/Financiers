@@ -61,3 +61,18 @@ export function browserLabel(ua: string | null | undefined): string {
   const br = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
   return `${br} on ${os}`;
 }
+
+/** Short Indian amounts for chart axes: ₹950, ₹12K, ₹4.5L, ₹1.2Cr. */
+export function compactInr(n: number): string {
+  const a = Math.abs(n);
+  const s = n < 0 ? '−' : '';
+  const trim = (v: number) => (v >= 100 ? v.toFixed(0) : v.toFixed(1).replace(/\.0$/, ''));
+  if (a >= 1e7) return `${s}₹${trim(a / 1e7)}Cr`;
+  if (a >= 1e5) return `${s}₹${trim(a / 1e5)}L`;
+  if (a >= 1e3) return `${s}₹${trim(a / 1e3)}K`;
+  return `${s}₹${a.toFixed(0)}`;
+}
+
+export function pct(v: number | null | undefined): string {
+  return v === null || v === undefined ? '—' : `${v.toFixed(1)}%`;
+}

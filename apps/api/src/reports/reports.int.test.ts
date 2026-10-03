@@ -276,3 +276,19 @@ describe('dashboards', () => {
     expect((await otherManager.get(`/dashboard/collector/${collectorEmp}`)).status).toBe(404);
   });
 });
+
+describe('notification centre', () => {
+  it('lists only what this user can act on, never their own requests', async () => {
+    const pending = await manager.post('/loans', {}, { 'Idempotency-Key': newKey() }); // invalid: ignored
+    expect(pending.status).toBe(400);
+    const id = await loan(manager, br, 0);
+    expect((await manager.post(`/loans/${id}/submit`)).status).toBe(200);
+    const mine = (await manager.get('/notifications')).body.items.find((i: { key: string }) => i.key === 'loans');
+    expect(mine).toBeUndefined(); // submitted it myself
+    const theirs = (await manager2.get('/notifications')).body;
+    expect(theirs.items.find((i: { key: string }) => i.key === 'loans')?.count).toBeGreaterThanOrEqual(1);
+    expect(theirs.total).toBeGreaterThanOrEqual(1);
+    const col = (await collector.get('/notifications')).body.items;
+    expect(col.find((i: { key: string }) => i.key === 'loans')).toBeUndefined();
+  });
+});

@@ -59,6 +59,20 @@ export class ReportsService {
     };
   }
 
+  /** Choices for the filter pickers, limited to what the user may see. */
+  async options(auth: AuthContext) {
+    const b = scope.branchFilter(auth);
+    const ids = auth.scope === 'ASSIGNED' ? [NONE] : b ? (b.length ? b : [NONE]) : null;
+    const [branches, employees, accounts] = await Promise.all([
+      this.db.selectFrom('branches').select(['id', 'code', 'name']).where('is_active', '=', true).$if(ids !== null, (q) => q.where('id', 'in', ids!)).orderBy('code').execute(),
+      this.db.selectFrom('employees').select(['id', 'full_name', 'employee_code', 'branch_id', 'is_collector']).where('status', '=', 'ACTIVE').$if(ids !== null, (q) => q.where('branch_id', 'in', ids!)).orderBy('full_name').execute(),
+      auth.permissions.has('report.accounting') || auth.permissions.has('report.reconciliation')
+        ? this.db.selectFrom('accounts').select(['id', 'code', 'name', 'subtype']).where('is_postable', '=', true).where('is_active', '=', true).orderBy('code').execute()
+        : Promise.resolve([]),
+    ]);
+    return { branches, employees, accounts };
+  }
+
   /** Validated filters with defaults applied, limited to the ones the report takes. */
   resolve(d: ReportDef, raw: unknown): Filters {
     const input = parse(filtersSchema, raw ?? {});

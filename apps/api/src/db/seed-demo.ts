@@ -19,6 +19,7 @@ import { BankingService } from '../accounting/banking.service';
 import { ExpensesService } from '../accounting/expenses.service';
 import { ensureBranchAccounts, LedgerService } from '../ledger/ledger.service';
 import { LoansService } from '../lending/loans.service';
+import { StatementsService } from '../reconciliation/statements.service';
 
 /**
  * Synthetic demo data for local development and UI review (doc 12 §9).
@@ -351,6 +352,31 @@ async function seedLoans(config: ReturnType<typeof loadConfig>, _pw: string) {
     const mgrEmp = await db.selectFrom('employees').select('id').where('user_id', '=', users['manager.kkd']!.id).executeTakeFirst();
     await pay(chequeLoan.id, { amount: '2000', method: 'CHEQUE', reference: '004517', chequeBank: 'Andhra Bank, Kakinada', chequeDate: today, confirmDuplicate: true }, { ...managerKkd, auth: { ...managerKkd.auth, employeeId: mgrEmp?.id ?? null } });
   }
+
+  // Phase 6: the SBI statement since the capital came in, imported through the real parser and
+  // matcher. Disbursements (by UTR), the posted UPI receipts and the cash deposit match on their
+  // own; an unknown NEFT credit and two bank charges are left for the accountant to resolve.
+  const dmy = (d: string) => d.split('-').reverse().join('/');
+  const disb = await db.selectFrom('loans').select(['disbursed_on', 'net_disbursement', 'disbursement_reference', 'loan_no']).where('disbursement_account_id', '=', bank.id).where('disbursed_on', 'is not', null).orderBy('disbursed_on').orderBy('loan_no').execute();
+  const upi = await db.selectFrom('payments').select(['amount', 'reference_no']).where('branch_id', '=', kkdId).where('method', '=', 'UPI').where('status', '=', 'POSTED').orderBy('created_at').execute();
+  const dep = await db.selectFrom('cash_deposits').select(['amount', 'slip_no', 'deposited_on']).where('to_account_id', '=', bank.id).execute();
+  type Row = { date: string; text: string; ref: string; debit: string; credit: string };
+  const rows: Row[] = [
+    ...disb.map((l) => ({ date: String(l.disbursed_on), text: `NEFT/DR/${l.disbursement_reference}/${l.loan_no}`, ref: l.disbursement_reference ?? '', debit: String(l.net_disbursement), credit: '' })),
+    ...upi.map((u) => ({ date: today, text: `UPI/CR/${u.reference_no}/PhonePe`, ref: u.reference_no ?? '', debit: '', credit: String(u.amount) })),
+    ...dep.map((d) => ({ date: String(d.deposited_on), text: `CASH DEPOSIT BY SELF ${d.slip_no ?? ''}`, ref: d.slip_no ?? '', debit: '', credit: String(d.amount) })),
+    { date: today, text: 'NEFT/CR/N274261839/RAMANA TRADERS', ref: 'N274261839', debit: '', credit: '4500.00' },
+    { date: today, text: 'SMS ALERT CHARGES QTR', ref: '', debit: '17.70', credit: '' },
+  ].sort((x, y) => x.date.localeCompare(y.date));
+  let paise = 2_500_000_00; // balance brought forward: the partners' capital
+  const csv = ['Date,Description,Reference,Debit,Credit,Balance', ...rows.map((r) => {
+    paise += Math.round(Number(r.credit || 0) * 100) - Math.round(Number(r.debit || 0) * 100);
+    return [dmy(r.date), `"${r.text}"`, r.ref, r.debit, r.credit, (paise / 100).toFixed(2)].join(',');
+  })].join('\n');
+  const statements = app.get(StatementsService);
+  await statements.import(accountant, bank.id, { buffer: Buffer.from(csv), originalname: `SBI-30112233445-${today}.csv` } as Express.Multer.File, { date: 0, description: 1, reference: 2, debit: 3, credit: 4, balance: 5, skipRows: 0, dateFormat: 'DD/MM/YYYY' }, false);
+  const brs = await statements.bankReconciliation(bank.id, today);
+  console.log(`bank reconciliation: unexplained ${brs.unexplained} — every remaining difference is a listed item`);
   await app.close();
 }
 

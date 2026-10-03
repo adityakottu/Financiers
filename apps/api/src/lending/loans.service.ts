@@ -13,6 +13,7 @@ import { Money } from '@fin/money';
 import { sql } from 'kysely';
 import { createHash } from 'node:crypto';
 import type { z } from 'zod';
+import { accountBalance } from '../accounting/banking.service';
 import { AuditService, diff } from '../audit/audit.service';
 import { scope } from '../auth/access.service';
 import type { AuthContext, RequestContext } from '../auth/context';
@@ -512,6 +513,12 @@ export class LoansService {
     if (d.disbursedOn > today) throw unprocessable('FUTURE_DATE', 'Disbursement date cannot be in the future');
     if (d.disbursedOn >= loan.first_due_date) throw unprocessable('AFTER_FIRST_DUE', 'Disbursement must be before the first installment date');
     const account = await this.ledger.assertPayoutAccount(tx, d.accountId, loan.branch_id, d.mode);
+    if (account.subtype === 'CASH') {
+      // Same rule as cash expenses: the till can't pay out cash it does not hold.
+      await tx.selectFrom('accounts').select('id').where('id', '=', account.id).forUpdate().execute();
+      const held = await accountBalance(tx, account.id);
+      if (Money.of(loan.net_disbursement).gt(held)) throw unprocessable('INSUFFICIENT_CASH', `Branch cash holds ₹${held.format({ symbol: false })}; disburse from a bank account or bring cash into the branch first`, { available: held.toString() });
+    }
 
     const fees = loan.fees as unknown as { code: string; label?: string; amount: string; gstAmount?: string; mode: string }[];
     const principal = Money.of(loan.principal);

@@ -2,7 +2,9 @@ import { addDays, addMonthsAnchored } from '@fin/loan-engine';
 import { Money } from '@fin/money';
 import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { accountBalance } from '../accounting/banking.service';
 import { istToday } from '../common/dates';
+import { LedgerService } from '../ledger/ledger.service';
 import { branchId, Client, createTestApp, createUser, newKey, signedIn, TestApp, TestUser } from '../test/harness';
 
 let t: TestApp;
@@ -326,6 +328,12 @@ describe('disbursement', () => {
     expect((await send({ mode: 'UPI', reference: undefined })).status).toBe(400);
     const { client: collector } = await signedIn(t, ['COLLECTION_EMPLOYEE'], { branches: ['KKD'] });
     expect((await send({}, collector)).status).toBe(403);
+    // The till holds less than the payout: refused, nothing posted. Fund it, then it goes through.
+    const short = await send({ accountId: cash.id, mode: 'CASH', reference: undefined });
+    expect(short.body.error?.code, JSON.stringify(short.body)).toBe('INSUFFICIENT_CASH');
+    const { net_disbursement } = await t.db.selectFrom('loans').select('net_disbursement').where('id', '=', loan.id).executeTakeFirstOrThrow();
+    const need = Money.of(net_disbursement).minus(await accountBalance(t.db, cash.id));
+    await t.db.transaction().execute((tx) => t.app.get(LedgerService).post(tx, { entryType: 'OPENING', valueDate: today, branchId: null, sourceType: 'test', sourceId: `float-${loan.id}`, narration: 'Cash float for a cash disbursement', lines: [{ account: cash.id, debit: need }, { account: '3100', credit: need }], createdBy: adminUser.id }));
     expect((await send({ accountId: cash.id, mode: 'CASH', reference: undefined })).status).toBe(200);
   });
 });

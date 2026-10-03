@@ -139,7 +139,7 @@ export const companySettingsSchema = z
   })
   .strict();
 
-export const NUMBERING_TYPES = ['CUSTOMER', 'LOAN', 'ASSET', 'RECEIPT', 'PAYMENT', 'JOURNAL', 'EXPENSE', 'DEPOSIT'] as const;
+export const NUMBERING_TYPES = ['CUSTOMER', 'LOAN', 'ASSET', 'RECEIPT', 'PAYMENT', 'JOURNAL', 'EXPENSE', 'DEPOSIT', 'RECOVERY', 'SALE'] as const;
 export const numberingFormatSchema = z
   .object({
     seqType: z.enum(NUMBERING_TYPES),

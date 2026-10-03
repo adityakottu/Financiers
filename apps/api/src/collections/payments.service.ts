@@ -244,13 +244,17 @@ export class PaymentsService {
 
   async record(tx: Tx, ctx: RequestContext, loanId: string, input: PaymentCreateInput) {
     const loan = await this.lockLoan(tx, ctx.auth, loanId);
-    if (loan.status !== 'ACTIVE') throw conflict('LOAN_NOT_ACTIVE', 'Payments can only be recorded on active loans');
+    // Money received after a write-off is recovered income (E13), not a repayment: no allocation.
+    const writtenOff = loan.status === 'WRITTEN_OFF';
+    if (loan.status !== 'ACTIVE' && !writtenOff) throw conflict('LOAN_NOT_ACTIVE', 'Payments can only be recorded on active loans');
     const today = istToday();
     const amount = Money.of(input.amount);
 
-    // Interest falling due today must be on the books before a payment can settle it.
-    await accrueInterest(tx, this.ledger, today, { loanIds: [loanId] });
-    await rollStatuses(tx, today, [loanId]);
+    if (!writtenOff) {
+      // Interest falling due today must be on the books before a payment can settle it.
+      await accrueInterest(tx, this.ledger, today, { loanIds: [loanId] });
+      await rollStatuses(tx, today, [loanId]);
+    }
 
     if (input.method === 'UPI' || input.method === 'BANK_TRANSFER') {
       const dup = await tx
@@ -290,8 +294,8 @@ export class PaymentsService {
       }
     }
 
-    let items = await this.openItems(tx, loanId);
-    const plan = this.plan(loan, items, amount.toString(), today);
+    let items = writtenOff ? [] : await this.openItems(tx, loanId);
+    const plan = writtenOff ? { fullSettlement: false, asOf: today, remaining: Money.zero(), advance: Money.zero() } : this.plan(loan, items, amount.toString(), today);
     const rule = this.rule(loan);
     if (plan.fullSettlement) {
       // Full settlement: the remaining schedule's interest is due now. Book it, then use any advance held.
@@ -302,7 +306,7 @@ export class PaymentsService {
       }
     }
     const before = items;
-    const a = this.allocateOrExplain(items, amount.toString(), rule, plan.asOf);
+    const a: Allocation = writtenOff ? { lines: [], advance: '0.00' } : this.allocateOrExplain(items, amount.toString(), rule, plan.asOf);
     const account = await this.debitAccount(tx, ctx, loan, input);
 
     const paymentNo = await this.numbering.next(tx, 'PAYMENT');
@@ -331,6 +335,7 @@ export class PaymentsService {
           notes: input.notes ?? null,
           debit_account_id: account.id,
           advance_amount: a.advance,
+          is_post_write_off: writtenOff,
         })
         .returning(['id', 'received_at'])
         .executeTakeFirstOrThrow();
@@ -355,10 +360,10 @@ export class PaymentsService {
       branchId: loan.branch_id,
       sourceType: 'payment',
       sourceId: payment.id,
-      narration: `Payment ${paymentNo} on loan ${loan.loan_no} (${methodText}${input.reference ? ` ${input.reference}` : ''})`,
+      narration: `Payment ${paymentNo} on loan ${loan.loan_no} (${methodText}${input.reference ? ` ${input.reference}` : ''})${writtenOff ? ' — recovered after write-off' : ''}`,
       lines: [
         { account: account.id, debit: amount, loanId, customerId: loan.customer_id, employeeId: account.employeeId, memo: `${methodText}${input.reference ? ` ${input.reference}` : ''}` },
-        ...this.creditLines(a.lines, loan),
+        ...(writtenOff ? [{ account: GL.BAD_DEBTS_RECOVERED, credit: amount, loanId, customerId: loan.customer_id, memo: 'Bad debt recovered' }] : this.creditLines(a.lines, loan)),
       ],
       createdBy: ctx.auth.userId,
     });
@@ -375,9 +380,12 @@ export class PaymentsService {
       .where('id', '=', loanId)
       .execute();
 
-    await rollStatuses(tx, today, [loanId]);
-    await this.loans.refreshBalances(tx, [loanId], today);
-    const closed = await this.closeIfSettled(tx, ctx, loanId, today, payment.id);
+    let closed = false;
+    if (!writtenOff) {
+      await rollStatuses(tx, today, [loanId]);
+      await this.loans.refreshBalances(tx, [loanId], today);
+      closed = await this.closeIfSettled(tx, ctx, loanId, today, payment.id);
+    }
 
     const after = await this.openItems(tx, loanId);
     const d = this.describe(before, after, a, plan.fullSettlement || closed);
@@ -404,7 +412,7 @@ export class PaymentsService {
       components: asStrings(comps),
       installmentsCleared: d.installmentsCleared,
       installmentsPart: d.installmentsPart,
-      balanceAfter: closed ? '0.00' : d.balanceAfter,
+      balanceAfter: closed || writtenOff ? '0.00' : d.balanceAfter,
       nextDue: d.nextDue ? { date: d.nextDue.date, amount: d.nextDue.amount } : null,
       loanClosed: closed,
       fullSettlement: plan.fullSettlement,
@@ -491,6 +499,46 @@ export class PaymentsService {
     await tx.updateTable('advance_applications').set({ journal_entry_id: entry.id }).where('id', '=', app.id).execute();
     await tx.updateTable('loans').set((eb) => ({ advance_balance: eb('advance_balance', '-', amount.toString()), updated_at: new Date() })).where('id', '=', loan.id).execute();
     return { id: app.id, amount: amount.toString() };
+  }
+
+  /**
+   * Proceeds of selling a repossessed asset (E14 ⚖): Dr bank / Cr customer advance, then the
+   * advance settles the loan exactly like money paid ahead. If it covers everything still owed
+   * the loan settles now (remaining interest falls due, as in a full settlement) and any surplus
+   * stays in 2200 as owed to the customer; otherwise it pays what is due now and the rest of the
+   * advance is used as installments fall due. A shortfall stays receivable (or is written off).
+   */
+  async applySaleProceeds(tx: Tx, ctx: RequestContext, loanId: string, sale: { id: string; saleNo: string; amount: string; accountId: string; date: string; assetLabel: string }) {
+    const loan = await this.lockLoan(tx, ctx.auth, loanId);
+    if (loan.status !== 'ACTIVE') throw conflict('LOAN_NOT_ACTIVE', 'Sale proceeds can only be applied to an active loan');
+    await accrueInterest(tx, this.ledger, sale.date, { loanIds: [loanId] });
+    await rollStatuses(tx, sale.date, [loanId]);
+    const amount = Money.of(sale.amount);
+    const entry = await this.ledger.post(tx, {
+      entryType: 'SALE',
+      valueDate: sale.date,
+      branchId: loan.branch_id,
+      sourceType: 'asset_sale',
+      sourceId: sale.id,
+      narration: `Sale ${sale.saleNo} of repossessed ${sale.assetLabel} — proceeds for loan ${loan.loan_no}`.slice(0, 500),
+      lines: [
+        { account: sale.accountId, debit: amount, loanId, customerId: loan.customer_id, memo: `Sale ${sale.saleNo}` },
+        { account: GL.CUSTOMER_ADVANCE, credit: amount, loanId, customerId: loan.customer_id, memo: 'Sale proceeds held for the loan' },
+      ],
+      createdBy: ctx.auth.userId,
+    });
+    await tx.updateTable('loans').set((eb) => ({ advance_balance: eb('advance_balance', '+', amount.toString()), total_collected: eb('total_collected', '+', amount.toString()), version: eb('version', '+', 1), updated_at: new Date() })).where('id', '=', loanId).execute();
+    const held = Money.of(loan.advance_balance).plus(amount);
+    const owed = this.remaining(await this.openItems(tx, loanId));
+    const settles = held.gte(owed);
+    if (settles) await accrueInterest(tx, this.ledger, sale.date, { loanIds: [loanId], throughDate: FAR_FUTURE, reason: 'Interest due on settlement from asset sale' });
+    const fresh = await tx.selectFrom('loans').select(['id', 'loan_no', 'customer_id', 'branch_id', 'advance_balance', 'allocation_rule']).where('id', '=', loanId).executeTakeFirstOrThrow();
+    const applied = await this.applyAdvance(tx, fresh, sale.date, settles ? FAR_FUTURE : sale.date);
+    await rollStatuses(tx, sale.date, [loanId]);
+    await this.loans.refreshBalances(tx, [loanId], sale.date);
+    const closed = await this.closeIfSettled(tx, ctx, loanId, sale.date, null);
+    const left = (await tx.selectFrom('loans').select('advance_balance').where('id', '=', loanId).executeTakeFirstOrThrow()).advance_balance;
+    return { journalEntryId: entry.id, applied: applied?.amount ?? '0.00', surplus: closed ? left : '0.00', heldForLater: closed ? '0.00' : left, closed };
   }
 
   /** Nightly: apply held advances to installments that fell due. Closes loans that become fully paid. */
@@ -588,6 +636,10 @@ export class PaymentsService {
     return this.db.transaction().execute(async (tx) => {
       const p = await this.paymentForUpdate(tx, ctx.auth, paymentId);
       if (p.status !== 'POSTED') throw conflict('INVALID_STATE', p.status === 'REVERSED' ? 'This payment is already reversed' : 'A reversal is already waiting for approval');
+      const loanStatus = (await tx.selectFrom('loans').select('status').where('id', '=', p.loan_id).executeTakeFirstOrThrow()).status;
+      if (loanStatus === 'WRITTEN_OFF' && !p.is_post_write_off) {
+        throw conflict('LOAN_WRITTEN_OFF', 'This loan has been written off; payments made before the write-off can no longer be reversed. Record a refund instead.');
+      }
       if (p.reconciliation_status === 'MATCHED') {
         throw conflict('RECONCILED', 'This payment is confirmed on the bank statement. Undo the bank match first (Reconciliation), or record a refund instead.');
       }
@@ -691,8 +743,10 @@ export class PaymentsService {
 
     // Any advance still held after undoing applications is re-applied to what is due today.
     if (undone) await this.applyAdvance(tx, { ...loan, advance_balance: (await tx.selectFrom('loans').select('advance_balance').where('id', '=', loan.id).executeTakeFirstOrThrow()).advance_balance }, today);
-    await rollStatuses(tx, today, [loan.id]);
-    await this.loans.refreshBalances(tx, [loan.id], today);
+    if (loan.status !== 'WRITTEN_OFF') {
+      await rollStatuses(tx, today, [loan.id]);
+      await this.loans.refreshBalances(tx, [loan.id], today);
+    }
     await this.loans.event(tx, p.customer_id, loan.id, ctx.auth.userId, 'PAYMENT_REVERSED', `Payment ${p.payment_no} (₹${Money.of(p.amount).format({ symbol: false })}) reversed${receipt ? `; receipt ${receipt.receipt_no} cancelled` : ''}${reopened ? '; loan reopened' : ''}`);
     if (receipt) {
       await this.messaging.notify(tx, {

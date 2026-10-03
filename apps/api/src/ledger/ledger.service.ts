@@ -6,7 +6,7 @@ import { notFound, unprocessable } from '../common/errors';
 import { DB_TOKEN, Db, Executor, Tx } from '../db/db';
 import { NumberingService } from '../numbering/numbering.service';
 
-export type EntryType = 'DISBURSEMENT' | 'FEE' | 'PAYMENT' | 'ACCRUAL' | 'PENALTY' | 'EXPENSE' | 'DEPOSIT' | 'TRANSFER' | 'ADJUSTMENT' | 'REVERSAL' | 'OPENING' | 'MANUAL';
+export type EntryType = 'DISBURSEMENT' | 'FEE' | 'PAYMENT' | 'ACCRUAL' | 'PENALTY' | 'EXPENSE' | 'DEPOSIT' | 'TRANSFER' | 'ADJUSTMENT' | 'REVERSAL' | 'OPENING' | 'MANUAL' | 'WRITE_OFF' | 'SALE';
 
 export interface PostingLine {
   /** Account code (e.g. '1310') or id. */
@@ -39,6 +39,9 @@ export const GL = {
   FEES_RECEIVABLE: '1330',
   PENAL_RECEIVABLE: '1340',
   CUSTOMER_ADVANCE: '2200',
+  REPOSSESSED_ASSETS: '1500',
+  BAD_DEBTS: '5600',
+  BAD_DEBTS_RECOVERED: '4500',
   GST_OUTPUT: '2310',
   OPENING_EQUITY: '3900',
   INTEREST_INCOME: '4100',
@@ -100,7 +103,7 @@ export class LedgerService {
     if (period?.status === 'SOFT_LOCKED' && !['ADJUSTMENT', 'REVERSAL'].includes(p.entryType)) {
       throw unprocessable('PERIOD_SOFT_LOCKED', `The books for ${period.period_start.slice(0, 7)} are closed for new entries (only adjustments and reversals).`);
     }
-    if (p.branchId && ['PAYMENT', 'DEPOSIT', 'EXPENSE', 'DISBURSEMENT', 'MANUAL', 'TRANSFER', 'FEE'].includes(p.entryType)) {
+    if (p.branchId && ['PAYMENT', 'DEPOSIT', 'EXPENSE', 'DISBURSEMENT', 'MANUAL', 'TRANSFER', 'FEE', 'SALE', 'WRITE_OFF'].includes(p.entryType)) {
       const day = await tx
         .selectFrom('business_days as d')
         .innerJoin('branches as b', 'b.id', 'd.branch_id')

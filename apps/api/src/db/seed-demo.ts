@@ -20,6 +20,7 @@ import { ExpensesService } from '../accounting/expenses.service';
 import { ensureBranchAccounts, LedgerService } from '../ledger/ledger.service';
 import { LoansService } from '../lending/loans.service';
 import { StatementsService } from '../reconciliation/statements.service';
+import { RecoveryService } from '../recovery/recovery.service';
 
 /**
  * Synthetic demo data for local development and UI review (doc 12 §9).
@@ -377,6 +378,34 @@ async function seedLoans(config: ReturnType<typeof loadConfig>, _pw: string) {
   await statements.import(accountant, bank.id, { buffer: Buffer.from(csv), originalname: `SBI-30112233445-${today}.csv` } as Express.Multer.File, { date: 0, description: 1, reference: 2, debit: 3, credit: 4, balance: 5, skipRows: 0, dateFormat: 'DD/MM/YYYY' }, false);
   const brs = await statements.bankReconciliation(bank.id, today);
   console.log(`bank reconciliation: unexplained ${brs.unexplained} — every remaining difference is a listed item`);
+
+  // Phase 7: the nightly job above opened recovery cases for loans 30+ days past due. Take the
+  // worst one in Kakinada through to repossession (approved by a second person), add history to
+  // the others, and leave one write-off request waiting for approval.
+  const recovery = app.get(RecoveryService);
+  const kkdCases = await db
+    .selectFrom('recovery_cases as rc')
+    .innerJoin('loans as l', 'l.id', 'rc.loan_id')
+    .select(['rc.id', 'l.id as loan_id', 'l.loan_no', 'l.dpd'])
+    .where('rc.branch_id', '=', kkdId)
+    .where('rc.status', '=', 'OPEN')
+    .orderBy('l.dpd', 'desc')
+    .execute();
+  const notes = ['Customer says the harvest money comes next week', 'Phone switched off for three days; neighbour gave a new number', 'Wife paid ₹500 towards the overdue; promised the rest by month end'];
+  for (const [i, rc] of kkdCases.entries()) {
+    await recovery.addAction(collector, rc.id, { type: i % 2 ? 'CALL' : 'VISIT', summary: notes[i % notes.length]! });
+  }
+  const worst = kkdCases[0];
+  if (worst) {
+    for (const stage of ['FIELD_VISIT', 'ESCALATED']) await recovery.moveStage(managerKkd, worst.id, { stage, note: stage === 'ESCALATED' ? 'Avoiding the collector for six weeks' : 'Weekly visits' });
+    await recovery.moveStage(managerKkd, worst.id, { stage: 'REPOSSESSION', note: 'Final notice period over (per legal advisor)' });
+    await recovery.decideStage(admin, worst.id, true, 'Reviewed the notices and visit history');
+    const asset = await db.selectFrom('assets').select('id').where('loan_id', '=', worst.loan_id).where('status', '=', 'ACTIVE').executeTakeFirst();
+    if (asset) await recovery.repossess(managerKkd, worst.id, { assetId: asset.id, repossessedOn: today, location: 'Kakinada branch yard', conditionNotes: 'Running condition; both keys; RC book with the customer; minor dent on the left side', valuation: '42000' });
+  }
+  const second = kkdCases[1];
+  if (second) await recovery.requestWriteOff(managerKkd, second.id, 'Customer has left the district; family says no contact. Vehicle not found after a 60-day search.');
+  console.log(`recovery: ${kkdCases.length} open cases in Kakinada`);
   await app.close();
 }
 

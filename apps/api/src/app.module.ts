@@ -44,6 +44,11 @@ import { JournalsService } from './accounting/journals.service';
 import { ReconciliationController } from './reconciliation/reconciliation.controller';
 import { SettlementsService } from './reconciliation/settlements.service';
 import { StatementsService } from './reconciliation/statements.service';
+import { RecoveryController } from './recovery/recovery.controller';
+import { RecoveryService } from './recovery/recovery.service';
+import { ReportsController } from './reports/reports.controller';
+import { ReportsService } from './reports/reports.service';
+import { DashboardService } from './dashboard/dashboard.service';
 
 @Controller('health')
 class HealthController {
@@ -108,6 +113,8 @@ export class AppModule implements NestModule {
         JournalsController,
         BooksController,
         ReconciliationController,
+        RecoveryController,
+        ReportsController,
       ],
       providers: [
         { provide: CONFIG, useValue: config },
@@ -134,6 +141,9 @@ export class AppModule implements NestModule {
         BooksService,
         SettlementsService,
         StatementsService,
+        RecoveryService,
+        ReportsService,
+        DashboardService,
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_GUARD, useClass: AuthGuard },
       ],

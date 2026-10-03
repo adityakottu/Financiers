@@ -4,7 +4,7 @@ Secure Lending, Collections, Accounting & Reconciliation Management System for a
 asset-backed lending business in India (electronics, 2W, 3W, 4W, buses, lorries/trucks).
 
 > **Status: Approved** with the recommended defaults for D1–D10 (D1 and D10 still need
-> CA/legal confirmation). Phases 2–6 are complete — see the [Phase 2](phase-2-report.md), [Phase 3](phase-3-report.md), [Phase 4](phase-4-report.md), [Phase 5](phase-5-report.md) and [Phase 6](phase-6-report.md) reports.
+> CA/legal confirmation). Phases 2–7 are complete — see the [Phase 2](phase-2-report.md), [Phase 3](phase-3-report.md), [Phase 4](phase-4-report.md), [Phase 5](phase-5-report.md), [Phase 6](phase-6-report.md) and [Phase 7](phase-7-report.md) reports. To open the app: [run-and-verify.md](run-and-verify.md).
 
 ## The spine of the system
 
@@ -54,6 +54,8 @@ from journal lines or verified against them.
 | — | [Phase 4 report](phase-4-report.md) | Collections, payments, receipts, reversals, messaging |
 | — | [Phase 5 report](phase-5-report.md) | Expenses, deposits, cheques, manual journals, books, month locks |
 | — | [Phase 6 report](phase-6-report.md) | Cash settlement, differences, statement import & matching, day close |
+| — | [Phase 7 report](phase-7-report.md) | Reports & exports, dashboards, recovery (repossession, sale, write-off), inbox |
+| — | [Run and verify](run-and-verify.md) | Codespaces, VS Code, Cloudflare — how to open the app |
 
 Items marked **⚖ REVIEW** require sign-off from a qualified Indian legal,
 accounting (CA) or compliance professional before go-live. The system is built to

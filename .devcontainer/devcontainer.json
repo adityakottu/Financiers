@@ -1,0 +1,27 @@
+{
+  // GitHub Codespaces and VS Code Dev Containers: Node 22 + pnpm + PostgreSQL 16, demo data loaded.
+  // After it builds, run `pnpm demo` in the terminal and open the forwarded port 3000.
+  "name": "Financiers",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": { "label": "Financiers web app", "onAutoForward": "openBrowser" },
+    "4000": { "label": "API (reached through the web app)", "onAutoForward": "silent" },
+    "5432": { "label": "PostgreSQL", "onAutoForward": "silent" }
+  },
+  "postCreateCommand": "bash scripts/dev-setup.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "bradlc.vscode-tailwindcss", "vitest.explorer"]
+    },
+    "codespaces": {
+      "openFiles": ["docs/run-and-verify.md"]
+    }
+  },
+  "hostRequirements": { "cpus": 4, "memory": "8gb" }
+}

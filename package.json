@@ -12,6 +12,8 @@
     "db:migrate": "pnpm --filter @fin/api run db:migrate",
     "db:seed": "pnpm --filter @fin/api run db:seed",
     "dev:api": "pnpm --filter @fin/api run dev",
-    "dev:web": "pnpm --filter @fin/web run dev"
+    "dev:web": "pnpm --filter @fin/web run dev",
+    "setup": "bash scripts/dev-setup.sh",
+    "demo": "bash scripts/dev-start.sh"
   }
 }

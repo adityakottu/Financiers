@@ -100,6 +100,16 @@ export class LedgerService {
     if (period?.status === 'SOFT_LOCKED' && !['ADJUSTMENT', 'REVERSAL'].includes(p.entryType)) {
       throw unprocessable('PERIOD_SOFT_LOCKED', `The books for ${period.period_start.slice(0, 7)} are closed for new entries (only adjustments and reversals).`);
     }
+    if (p.branchId && ['PAYMENT', 'DEPOSIT', 'EXPENSE', 'DISBURSEMENT', 'MANUAL', 'TRANSFER', 'FEE'].includes(p.entryType)) {
+      const day = await tx
+        .selectFrom('business_days as d')
+        .innerJoin('branches as b', 'b.id', 'd.branch_id')
+        .select(['d.status', 'b.name'])
+        .where('d.branch_id', '=', p.branchId)
+        .where('d.business_date', '=', p.valueDate)
+        .executeTakeFirst();
+      if (day?.status === 'CLOSED') throw unprocessable('DAY_CLOSED', `${day.name}'s business day ${p.valueDate.split('-').reverse().join('/')} is closed. Ask the branch manager to reopen it, or record this on the next open day.`);
+    }
     const entryNo = await this.numbering.next(tx, 'JOURNAL');
     const entry = await tx
       .insertInto('journal_entries')

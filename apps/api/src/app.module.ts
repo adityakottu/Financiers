@@ -41,6 +41,9 @@ import { BankingService } from './accounting/banking.service';
 import { BooksService } from './accounting/books.service';
 import { ExpensesService } from './accounting/expenses.service';
 import { JournalsService } from './accounting/journals.service';
+import { ReconciliationController } from './reconciliation/reconciliation.controller';
+import { SettlementsService } from './reconciliation/settlements.service';
+import { StatementsService } from './reconciliation/statements.service';
 
 @Controller('health')
 class HealthController {
@@ -104,6 +107,7 @@ export class AppModule implements NestModule {
         BankingController,
         JournalsController,
         BooksController,
+        ReconciliationController,
       ],
       providers: [
         { provide: CONFIG, useValue: config },
@@ -128,6 +132,8 @@ export class AppModule implements NestModule {
         BankingService,
         JournalsService,
         BooksService,
+        SettlementsService,
+        StatementsService,
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_GUARD, useClass: AuthGuard },
       ],

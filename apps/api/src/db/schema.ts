@@ -165,6 +165,43 @@ export interface BankAccounts {
   upi_vpa: string | null;
 }
 
+export interface BankStatementImports {
+  account_id: string;
+  file_name: string;
+  file_sha256: string;
+  id: Generated<string>;
+  imported_at: Generated<Timestamp>;
+  imported_by: string;
+  invalid_rows: Generated<Json>;
+  mapping: Json;
+  period_from: string | null;
+  period_to: string | null;
+  rows_duplicate: number;
+  rows_invalid: number;
+  rows_new: number;
+  rows_total: number;
+}
+
+export interface BankStatementLines {
+  account_id: string;
+  balance: Numeric | null;
+  created_at: Generated<Timestamp>;
+  credit: Generated<Numeric>;
+  debit: Generated<Numeric>;
+  description: string;
+  handled_at: Timestamp | null;
+  handled_by: string | null;
+  id: Generated<string>;
+  ignore_reason: string | null;
+  import_id: string;
+  match_status: Generated<string>;
+  reference: string | null;
+  row_hash: string;
+  seq: Generated<Int8>;
+  txn_date: string;
+  utr: string | null;
+}
+
 export interface Branches {
   address: string | null;
   code: string;
@@ -180,6 +217,21 @@ export interface Branches {
   version: Generated<number>;
 }
 
+export interface BusinessDays {
+  branch_id: string;
+  business_date: string;
+  closed_at: Timestamp | null;
+  closed_by: string | null;
+  id: Generated<string>;
+  reopen_reason: string | null;
+  reopen_requested_at: Timestamp | null;
+  reopen_requested_by: string | null;
+  reopened_at: Timestamp | null;
+  reopened_by: string | null;
+  status: Generated<string>;
+  summary: Json | null;
+}
+
 export interface CashDeposits {
   amount: Numeric;
   branch_id: string;
@@ -191,6 +243,7 @@ export interface CashDeposits {
   id: Generated<string>;
   journal_entry_id: string | null;
   notes: string | null;
+  reconciled_at: Timestamp | null;
   reconciliation_status: Generated<string>;
   recorded_at: Generated<Timestamp>;
   recorded_by: string;
@@ -346,6 +399,28 @@ export interface Employees {
   updated_at: Generated<Timestamp>;
   updated_by: string | null;
   user_id: string | null;
+  version: Generated<number>;
+}
+
+export interface EmployeeSettlements {
+  approved_at: Timestamp | null;
+  approved_by: string | null;
+  branch_id: string;
+  business_date: string;
+  counted_at: Timestamp | null;
+  counted_by: string | null;
+  counted_cash: Numeric | null;
+  declaration_note: string | null;
+  declared_at: Timestamp | null;
+  declared_by: string | null;
+  declared_cash: Numeric | null;
+  difference: Numeric | null;
+  employee_id: string;
+  employee_user_id: string | null;
+  expected_cash: Numeric | null;
+  id: Generated<string>;
+  snapshot: Json | null;
+  status: Generated<string>;
   version: Generated<number>;
 }
 
@@ -787,6 +862,7 @@ export interface Payments {
   notes: string | null;
   payment_no: string;
   received_at: Generated<Timestamp>;
+  reconciled_at: Timestamp | null;
   reconciliation_status: Generated<string>;
   recorded_by: string;
   reference_no: string | null;
@@ -824,6 +900,25 @@ export interface Receipts {
   snapshot: Json;
   status: Generated<string>;
   verify_token: string;
+}
+
+export interface ReconciliationMatches {
+  amount: Numeric;
+  confidence: Numeric;
+  confirmed_at: Timestamp | null;
+  confirmed_by: string | null;
+  id: Generated<string>;
+  journal_entry_id: string | null;
+  method: string;
+  statement_line_id: string;
+  status: Generated<string>;
+  suggested_at: Generated<Timestamp>;
+  target_id: string;
+  target_type: string;
+  undo_journal_entry_id: string | null;
+  undo_reason: string | null;
+  undone_at: Timestamp | null;
+  undone_by: string | null;
 }
 
 export interface ReminderRules {
@@ -865,6 +960,23 @@ export interface Sessions {
   token_hash: Buffer;
   user_agent: string | null;
   user_id: string;
+}
+
+export interface SettlementDifferences {
+  amount: Numeric;
+  decided_at: Timestamp | null;
+  decided_by: string | null;
+  decision_note: string | null;
+  direction: string;
+  id: Generated<string>;
+  journal_entry_id: string | null;
+  notes: string;
+  reason_code: string;
+  recorded_at: Generated<Timestamp>;
+  recorded_by: string;
+  resolution: string;
+  settlement_id: string;
+  status: Generated<string>;
 }
 
 export interface SystemSettings {
@@ -924,7 +1036,10 @@ export interface DB {
   assets: Assets;
   audit_logs: AuditLogs;
   bank_accounts: BankAccounts;
+  bank_statement_imports: BankStatementImports;
+  bank_statement_lines: BankStatementLines;
   branches: Branches;
+  business_days: BusinessDays;
   cash_deposits: CashDeposits;
   collection_assignments: CollectionAssignments;
   collection_visits: CollectionVisits;
@@ -934,6 +1049,7 @@ export interface DB {
   customer_kyc_documents: CustomerKycDocuments;
   customer_references: CustomerReferences;
   customers: Customers;
+  employee_settlements: EmployeeSettlements;
   employees: Employees;
   expense_categories: ExpenseCategories;
   expenses: Expenses;
@@ -963,10 +1079,12 @@ export interface DB {
   permissions: Permissions;
   promises_to_pay: PromisesToPay;
   receipts: Receipts;
+  reconciliation_matches: ReconciliationMatches;
   reminder_rules: ReminderRules;
   role_permissions: RolePermissions;
   roles: Roles;
   sessions: Sessions;
+  settlement_differences: SettlementDifferences;
   system_settings: SystemSettings;
   user_branches: UserBranches;
   user_permission_overrides: UserPermissionOverrides;

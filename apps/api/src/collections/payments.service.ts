@@ -588,6 +588,9 @@ export class PaymentsService {
     return this.db.transaction().execute(async (tx) => {
       const p = await this.paymentForUpdate(tx, ctx.auth, paymentId);
       if (p.status !== 'POSTED') throw conflict('INVALID_STATE', p.status === 'REVERSED' ? 'This payment is already reversed' : 'A reversal is already waiting for approval');
+      if (p.reconciliation_status === 'MATCHED') {
+        throw conflict('RECONCILED', 'This payment is confirmed on the bank statement. Undo the bank match first (Reconciliation), or record a refund instead.');
+      }
       const r = await tx
         .insertInto('payment_reversals')
         .values({ payment_id: paymentId, reason_code: input.reasonCode, reason_text: input.reasonText, requested_by: ctx.auth.userId })

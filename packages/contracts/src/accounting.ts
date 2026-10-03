@@ -89,3 +89,53 @@ export const journalListQuerySchema = z.object({
 export const periodQuerySchema = z.object({ from: isoDate, to: isoDate, branchId: z.string().uuid().optional() });
 export const asOfQuerySchema = z.object({ asOf: isoDate, branchId: z.string().uuid().optional() });
 export const unlockSchema = z.object({ reason: z.string().trim().min(10, 'Explain why the month must be reopened').max(500) }).strict();
+
+/* ---------------------------- Reconciliation ---------------------------- */
+
+/** Differences above this need Management approval (doc 09 §4). */
+export const DIFFERENCE_MANAGEMENT_THRESHOLD = '1000.00';
+
+export const DIFFERENCE_REASONS = ['PENDING_DEPOSIT', 'EXPENSE', 'CUSTOMER_REFUND', 'CORRECTION', 'COUNTING_ERROR', 'OTHER'] as const;
+export const DIFFERENCE_REASON_LABELS: Record<(typeof DIFFERENCE_REASONS)[number], string> = {
+  PENDING_DEPOSIT: 'Deposited but not yet recorded (carry forward)',
+  EXPENSE: 'Spent on a business expense',
+  CUSTOMER_REFUND: 'Refunded to a customer',
+  CORRECTION: 'Wrong payment entry',
+  COUNTING_ERROR: 'Counting / change error',
+  OTHER: 'Other',
+};
+export const DIFFERENCE_RESOLUTIONS = ['CARRY_FORWARD', 'RECOVER_FROM_EMPLOYEE', 'WRITE_OFF', 'CASH_EXCESS_INCOME', 'TO_SUSPENSE'] as const;
+export const DIFFERENCE_RESOLUTION_LABELS: Record<(typeof DIFFERENCE_RESOLUTIONS)[number], string> = {
+  CARRY_FORWARD: 'Carry forward (stays with the employee)',
+  RECOVER_FROM_EMPLOYEE: 'Recover from the employee',
+  WRITE_OFF: 'Write off as a loss',
+  CASH_EXCESS_INCOME: 'Take excess to income',
+  TO_SUSPENSE: 'Hold in suspense until identified',
+};
+
+export const settlementDeclareSchema = z.object({ declaredCash: moneySchema, note: optional(z.string().trim().max(300)) }).strict();
+export const settlementCountSchema = z.object({ countedCash: moneySchema }).strict();
+export const differenceSchema = z
+  .object({
+    amount: positive,
+    reasonCode: z.enum(DIFFERENCE_REASONS),
+    resolution: z.enum(DIFFERENCE_RESOLUTIONS),
+    notes: z.string().trim().min(5, 'Explain what happened').max(500),
+  })
+  .strict();
+
+export const statementMappingSchema = z
+  .object({
+    /** Zero-based column indexes in the file. */
+    date: z.coerce.number().int().min(0),
+    description: z.coerce.number().int().min(0),
+    reference: z.coerce.number().int().min(0).optional(),
+    debit: z.coerce.number().int().min(0),
+    credit: z.coerce.number().int().min(0),
+    balance: z.coerce.number().int().min(0).optional(),
+    /** Rows to skip before the header row. */
+    skipRows: z.coerce.number().int().min(0).max(50).default(0),
+    dateFormat: z.enum(['DD/MM/YYYY', 'DD-MM-YYYY', 'YYYY-MM-DD', 'DD-MMM-YYYY', 'DD MMM YYYY']).default('DD/MM/YYYY'),
+  })
+  .strict();
+export type StatementMapping = z.infer<typeof statementMappingSchema>;

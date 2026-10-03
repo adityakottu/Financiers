@@ -63,6 +63,17 @@ export const PERMISSIONS = {
   'period.lock': 'Lock an accounting month',
   'period.unlock': 'Unlock an accounting month (audited, with reason)',
 
+  // Reconciliation
+  'recon.view': 'See reconciliation: settlements, statements, day status',
+  'settlement.submit': 'Declare own cash in hand at end of day',
+  'settlement.verify': 'Count and verify an employee’s cash (not your own)',
+  'difference.approve': 'Approve settlement differences up to the threshold (not your own)',
+  'difference.approve_high': 'Approve settlement differences above the threshold',
+  'statement.import': 'Import bank / UPI statements',
+  'recon.match': 'Confirm, reject or undo statement matches',
+  'day.close': 'Close a branch business day; ask for a reopen',
+  'day.reopen': 'Approve reopening a closed business day (not your own request)',
+
   // System
   'jobs.run': 'Run end-of-day jobs manually',
 
@@ -112,6 +123,10 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'ALL',
     mfaRequired: true,
     permissions: [
+      'recon.view',
+      'difference.approve',
+      'difference.approve_high',
+      'day.reopen',
       'expense.view',
       'expense.approve',
       'journal.approve',
@@ -144,6 +159,11 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'BRANCH',
     mfaRequired: false,
     permissions: [
+      'recon.view',
+      'settlement.submit',
+      'settlement.verify',
+      'difference.approve',
+      'day.close',
       'expense.submit',
       'expense.view',
       'expense.approve',
@@ -186,6 +206,11 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'BRANCH',
     mfaRequired: true,
     permissions: [
+      'recon.view',
+      'settlement.verify',
+      'statement.import',
+      'recon.match',
+      'day.close',
       'expense.submit',
       'expense.view',
       'expense.post',
@@ -221,6 +246,7 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'ASSIGNED',
     mfaRequired: false,
     permissions: [
+      'settlement.submit',
       'expense.submit',
       'payment.collect',
       'payment.view',

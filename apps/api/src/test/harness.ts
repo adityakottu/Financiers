@@ -155,6 +155,19 @@ export class Client {
     return { status: res.status, headers: res.headers, bytes: res.body as Buffer };
   }
 
+  /** multipart/form-data POST (file uploads). */
+  async upload(path: string, fields: Record<string, string | number | boolean | undefined>, file: { name: string; content: Buffer | string; type?: string }) {
+    let r = request(this.server)
+      .post(`/api/v1${path}`)
+      .set('Cookie', this.cookieHeader())
+      .set('X-Forwarded-For', this.ip)
+      .set('Origin', ORIGIN)
+      .set('X-CSRF-Token', this.csrf);
+    for (const [k, v] of Object.entries(fields)) if (v !== undefined) r = r.field(k, String(v));
+    r = r.attach('file', Buffer.isBuffer(file.content) ? file.content : Buffer.from(file.content), { filename: file.name, contentType: file.type ?? 'text/csv' });
+    return this.capture(await r);
+  }
+
   get(path: string, headers?: Record<string, string>) {
     return this.send('get', path, undefined, headers);
   }

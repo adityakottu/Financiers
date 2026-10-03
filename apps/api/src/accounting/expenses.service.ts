@@ -8,6 +8,7 @@ import { conflict, forbidden, notFound, unprocessable } from '../common/errors';
 import { DB_TOKEN, Db, Tx } from '../db/db';
 import { LedgerService } from '../ledger/ledger.service';
 import { NumberingService } from '../numbering/numbering.service';
+import { accountBalance } from './banking.service';
 
 const NONE = '00000000-0000-0000-0000-000000000000';
 
@@ -135,6 +136,12 @@ export class ExpensesService {
       if (e.submitted_by === ctx.auth.userId) throw forbidden('MAKER_CHECKER', 'You submitted this expense, so someone else must post it');
       const cat = await tx.selectFrom('expense_categories').select(['name', 'account_id']).where('id', '=', e.category_id).executeTakeFirstOrThrow();
       const amount = Money.of(e.amount);
+      if (e.paid_from === 'BRANCH_CASH') {
+        // Branch cash can't go below zero: you cannot pay out cash the branch does not hold.
+        await tx.selectFrom('accounts').select('id').where('id', '=', e.paid_from_account_id).forUpdate().execute();
+        const held = await accountBalance(tx, e.paid_from_account_id);
+        if (amount.gt(held)) throw unprocessable('INSUFFICIENT_CASH', `Branch cash holds ₹${held.format({ symbol: false })}; record the cash coming in first (deposit / hand-over), or pay from a bank account`, { available: held.toString() });
+      }
       const entry = await this.ledger.post(tx, {
         entryType: 'EXPENSE',
         valueDate: e.expense_date,

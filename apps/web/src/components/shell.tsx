@@ -29,7 +29,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <nav className="space-y-6" aria-label="Main">
       {NAV.map((group, gi) => {
-        const items = group.items.filter((i) => (i.phase || !i.requires || can(...i.requires)) && (!i.collectorOnly || !!me?.employee?.isCollector));
+        const items = group.items.filter((i) => (i.phase || !i.requires || can(...i.requires)) && (!i.requiresAny || i.requiresAny.some((p) => can(p))) && (!i.collectorOnly || !!me?.employee?.isCollector));
         if (!items.length) return null;
         return (
           <div key={gi}>
@@ -165,7 +165,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="flex-1 overflow-y-auto px-3 py-5">
           <NavLinks />
         </div>
-        <div className="border-t border-white/10 px-5 py-3 text-[11px] text-white/35">Phase 4 · Collections</div>
+        <div className="border-t border-white/10 px-5 py-3 text-[11px] text-white/35">Phase 5 · Accounting</div>
       </aside>
 
       {/* Mobile drawer */}

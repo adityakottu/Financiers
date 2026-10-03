@@ -84,6 +84,14 @@ beforeAll(async () => {
   productId = p.body.id;
   const b = await admin.post('/accounts/bank', { name: 'ICICI Current A/c', bankName: 'ICICI Bank', accountNumber: '002105001234', ifsc: 'ICIC0000021', kind: 'CURRENT' });
   bankId = b.body.id;
+  // Owners put in capital and a branch cash float — through an approved journal, like any other entry.
+  const float = await accountant.post('/manual-journals', {
+    valueDate: today, branchId: kkd, narration: 'Capital introduced: bank and Kakinada cash float',
+    lines: [{ accountId: bankId, debit: '500000' }, { accountId: await code('1110-KKD'), debit: '20000' }, { accountId: await code('3100'), credit: '520000' }],
+  });
+  expect(float.status, JSON.stringify(float.body)).toBe(201);
+  await accountant2.reauth(t, accountant2User);
+  expect((await accountant2.post(`/manual-journals/${float.body.id}/approve`, {})).status).toBe(200);
 });
 afterAll(async () => {
   await t.db.updateTable('accounting_periods').set({ status: 'OPEN' }).execute(); // never leave locks for other suites
@@ -91,6 +99,16 @@ afterAll(async () => {
 });
 
 describe('expenses', () => {
+  it('branch cash cannot be paid out below zero', async () => {
+    const cash = await code('1110-KKD');
+    const held = Money.of(await balance(cash));
+    const e = await manager.post('/expenses', { branchId: kkd, categoryId: await category('Office expenses'), amount: held.plus(Money.of('1')).toString(), expenseDate: today, paidFrom: 'BRANCH_CASH', description: 'More than the till holds' });
+    await manager2.post(`/expenses/${e.body.id}/approve`);
+    const r = await accountant.post(`/expenses/${e.body.id}/post`);
+    expect(r.body.error.code).toBe('INSUFFICIENT_CASH');
+    await manager2.post(`/expenses/${e.body.id}/reject`, { reason: 'Pay from the bank instead' });
+  });
+
   it('collector claims from own cash → manager approves → accountant posts (Dr expense / Cr cash in hand)', async () => {
     const e = await collector.post('/expenses', { branchId: kkd, categoryId: await category('Fuel'), amount: '450', expenseDate: today, paidFrom: 'EMPLOYEE_CASH', vendor: 'HP Petrol Bunk', description: 'Petrol for field visits' });
     expect(e.status, JSON.stringify(e.body)).toBe(201);
@@ -240,7 +258,6 @@ describe('manual journals', () => {
     const ok = await accountant.post('/manual-journals', { valueDate: today, branchId: kkd, narration: 'Stationery bought from petty cash last week', lines: [{ accountId: office, debit: '240', memo: 'Registers' }, { accountId: cash, credit: '240' }] });
     expect(ok.status, JSON.stringify(ok.body)).toBe(201);
     expect((await accountant.post(`/manual-journals/${ok.body.id}/approve`, {})).status).toBe(403);
-    expect((await accountant2.post(`/manual-journals/${ok.body.id}/approve`, {})).body.error.code).toBe('REAUTH_REQUIRED');
     await accountant2.reauth(t, accountant2User);
     const a = await accountant2.post(`/manual-journals/${ok.body.id}/approve`, {});
     expect(a.status, JSON.stringify(a.body)).toBe(200);

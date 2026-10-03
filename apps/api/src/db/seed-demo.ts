@@ -15,6 +15,8 @@ import { JobsService } from '../jobs/jobs.service';
 import { CollectionsService } from '../collections/collections.service';
 import { PaymentsService } from '../collections/payments.service';
 import { MessagingService } from '../messaging/messaging.service';
+import { BankingService } from '../accounting/banking.service';
+import { ExpensesService } from '../accounting/expenses.service';
 import { ensureBranchAccounts, LedgerService } from '../ledger/ledger.service';
 import { LoansService } from '../lending/loans.service';
 
@@ -75,6 +77,7 @@ async function main() {
       ['manager.kkd', 'Ravi Shankar', 'BRANCH_MANAGER', ['KKD']],
       ['manager.rjy', 'Sarada Devi', 'BRANCH_MANAGER', ['RJY']],
       ['collector.kkd', 'Naresh Babu', 'COLLECTION_EMPLOYEE', ['KKD']],
+      ['accounts.kkd', 'Lakshmi Prasanna', 'ACCOUNTANT', ['KKD', 'RJY']],
     ];
     for (const [username, fullName, role, bcodes] of users) {
       const exists = await tx.selectFrom('users').select('id').where('username', '=', username).executeTakeFirst();
@@ -209,6 +212,25 @@ async function seedLoans(config: ReturnType<typeof loadConfig>, _pw: string) {
   let bank!: { id: string };
   await db.transaction().execute(async (tx) => {
     bank = await ledger.createBankAccount(tx, { name: 'SBI Current A/c — Kakinada', bankName: 'State Bank of India', branchName: 'Kakinada Main', accountNumber: '30112233445', ifsc: 'SBIN0000812', kind: 'CURRENT' }, users.admin!.id);
+    // Owners' capital in the bank and a cash float in each branch, before any lending.
+    const { Money } = await import('@fin/money');
+    const opening = new Date(`${istToday()}T00:00:00Z`);
+    opening.setUTCMonth(opening.getUTCMonth() - 6);
+    await ledger.post(tx, {
+      entryType: 'OPENING',
+      valueDate: opening.toISOString().slice(0, 10),
+      branchId: null,
+      sourceType: 'demo',
+      sourceId: 'capital',
+      narration: 'Capital introduced by the partners: bank balance and branch cash floats',
+      lines: [
+        { account: bank.id, debit: Money.of('2500000') },
+        { account: '1110-KKD', debit: Money.of('25000') },
+        { account: '1110-RJY', debit: Money.of('15000') },
+        { account: '3100', credit: Money.of('2540000') },
+      ],
+      createdBy: users.admin!.id,
+    });
   });
 
   const customers = await db.selectFrom('customers as c').innerJoin('branches as b', 'b.id', 'c.branch_id').select(['c.id', 'b.code']).orderBy('c.customer_no').execute();
@@ -306,6 +328,29 @@ async function seedLoans(config: ReturnType<typeof loadConfig>, _pw: string) {
   if (unpaid[1]) await collections.recordVisit(collector, unpaid[1].id, { outcome: 'NOT_AVAILABLE', notes: 'House locked; neighbour says back tomorrow' });
   if (paid[1]) await payments.requestReversal(collector, paid[1], { reasonCode: 'WRONG_AMOUNT', reasonText: 'Entered 500 more than the customer paid' });
   await messaging.relayOnce(200);
+
+  // Phase 5: expenses at each stage, a cash deposit and a cheque in hand.
+  const expenses = app.get(ExpensesService);
+  const banking = app.get(BankingService);
+  const kkdId = (await db.selectFrom('branches').select('id').where('code', '=', 'KKD').executeTakeFirstOrThrow()).id;
+  const cat = async (name: string) => (await db.selectFrom('expense_categories').select('id').where('name', '=', name).executeTakeFirstOrThrow()).id;
+  const accountant = ctx('accounts.kkd');
+  const managerKkd = ctx('manager.kkd');
+  const fuel = await expenses.create(collector, { branchId: kkdId, categoryId: await cat('Fuel'), amount: '380', expenseDate: today, paidFrom: 'EMPLOYEE_CASH', vendor: 'Indian Oil, Gandhi Nagar', description: 'Petrol for the Pithapuram route' });
+  await expenses.approve(managerKkd, fuel.id);
+  await expenses.post(accountant, fuel.id);
+  const tea = await expenses.create(managerKkd, { branchId: kkdId, categoryId: await cat('Office expenses'), amount: '240', expenseDate: today, paidFrom: 'BRANCH_CASH', vendor: 'Sri Sai Tea Stall', description: 'Tea and snacks for branch meeting' });
+  await expenses.approve(admin, tea.id);
+  await expenses.create(collector, { branchId: kkdId, categoryId: await cat('Travel'), amount: '120', expenseDate: today, paidFrom: 'EMPLOYEE_CASH', description: 'Auto to Samalkot and back' });
+  const collectorCash = await ledger.employeeCashAccount(db, collectorEmp.id);
+  const held = (await db.selectFrom('journal_lines').select((eb) => eb.fn.sum<string>('debit').as('d')).select((eb) => eb.fn.sum<string>('credit').as('c')).where('account_id', '=', collectorCash.id).executeTakeFirstOrThrow());
+  const cashHeld = Number(held.d ?? 0) - Number(held.c ?? 0);
+  if (cashHeld > 1000) await banking.recordDeposit(managerKkd, { fromAccountId: collectorCash.id, toAccountId: bank.id, amount: (Math.floor(cashHeld / 2 / 100) * 100).toFixed(2), depositedOn: today, slipNo: 'SBI-KKD-0412' });
+  const chequeLoan = kkdActive[2] ?? kkdActive[0]; // a customer already met today; leaves the unvisited ones for the collector
+  if (chequeLoan) {
+    const mgrEmp = await db.selectFrom('employees').select('id').where('user_id', '=', users['manager.kkd']!.id).executeTakeFirst();
+    await pay(chequeLoan.id, { amount: '2000', method: 'CHEQUE', reference: '004517', chequeBank: 'Andhra Bank, Kakinada', chequeDate: today, confirmDuplicate: true }, { ...managerKkd, auth: { ...managerKkd.auth, employeeId: mgrEmp?.id ?? null } });
+  }
   await app.close();
 }
 

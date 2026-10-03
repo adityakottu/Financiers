@@ -3,8 +3,8 @@
 Lending, collections, accounting and daily reconciliation system for an
 asset-backed lending business in India.
 
-**Current phase:** Phase 4 — Collections ✅ (see [Phase 4 report](docs/phase-4-report.md);
-earlier: [Phase 3](docs/phase-3-report.md), [Phase 2](docs/phase-2-report.md)).
+**Current phase:** Phase 5 — Accounting ✅ (see [Phase 5 report](docs/phase-5-report.md);
+earlier: [Phase 4](docs/phase-4-report.md), [Phase 3](docs/phase-3-report.md), [Phase 2](docs/phase-2-report.md)).
 Architecture and specifications: [docs/README.md](docs/README.md).
 
 ## Repository layout
@@ -40,11 +40,12 @@ pnpm dev:api     # http://localhost:4000/api/v1
 pnpm dev:web     # http://localhost:3000  (proxies /api/v1 to the API)
 ```
 
-The demo data includes branches KKD and RJY, users `manager.kkd`, `manager.rjy`
-and `collector.kkd` (password = `DEMO_PASSWORD`), 36 customers, three loan
+The demo data includes branches KKD and RJY, users `manager.kkd`, `manager.rjy`,
+`collector.kkd` and `accounts.kkd` (password = `DEMO_PASSWORD`), 36 customers, three loan
 products and loans in every state, with end-of-day processing run for the last
 10 days, then a day of collections by `collector.kkd` (payments, receipts,
-a reversal awaiting approval, visits).
+a reversal awaiting approval, visits), partners' capital, expenses at each stage,
+a cash deposit and a cheque in hand.
 
 Messaging runs in test mode (nothing is sent; messages are marked "Not sent (test
 mode)") until MSG91 / WhatsApp Business Cloud API credentials are set — see

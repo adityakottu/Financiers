@@ -8,6 +8,7 @@ import { istToday } from '../common/dates';
 import { badRequest, conflict, forbidden, notFound, unprocessable } from '../common/errors';
 import { DB_TOKEN, Db } from '../db/db';
 import { LedgerService } from '../ledger/ledger.service';
+import { accountBalance } from './banking.service';
 
 const NONE = '00000000-0000-0000-0000-000000000000';
 /** Control accounts whose balances must equal a sub-ledger (loans, advances). Only business events post to them. */
@@ -77,6 +78,15 @@ export class JournalsService {
       if (m.status !== 'PENDING') throw conflict('INVALID_STATE', `This journal is ${m.status.toLowerCase()}`);
       if (m.created_by === ctx.auth.userId) throw forbidden('MAKER_CHECKER', 'You prepared this journal, so someone else must approve it');
       const lines = m.lines as unknown as LineInput[];
+      // Cash accounts can't be driven below zero by a journal either.
+      for (const l of lines.filter((x) => Money.of(x.credit).isPositive())) {
+        const a = await tx.selectFrom('accounts').select(['id', 'name', 'subtype']).where('id', '=', l.accountId).forUpdate().executeTakeFirstOrThrow();
+        if (a.subtype === 'CASH' || a.subtype === 'EMPLOYEE_CASH') {
+          const held = await accountBalance(tx, a.id);
+          const out = Money.sum(lines.filter((x) => x.accountId === a.id).map((x) => Money.of(x.credit).minus(Money.of(x.debit))));
+          if (out.gt(held)) throw unprocessable('INSUFFICIENT_CASH', `${a.name} holds ₹${held.format({ symbol: false })}; this journal would take it below zero`);
+        }
+      }
       const entry = await this.ledger.post(tx, {
         entryType: 'MANUAL',
         valueDate: m.value_date,

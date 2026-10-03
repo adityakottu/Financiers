@@ -1,6 +1,7 @@
 import type { Permission } from '@fin/contracts';
 import {
   BarChart3,
+  BookOpen,
   Calculator,
   Package,
   Bell,
@@ -32,6 +33,8 @@ export interface NavItem {
   phase?: number;
   /** Only for users linked to a collector employee record. */
   collectorOnly?: boolean;
+  /** Visible with any one of these permissions. */
+  requiresAny?: Permission[];
 }
 
 export interface NavGroup {
@@ -59,8 +62,10 @@ export const NAV: NavGroup[] = [
       { label: 'Reconciliation', href: '/reconciliation', icon: Scale, phase: 6 },
       { label: 'Payments & receipts', href: '/payments', icon: Receipt, requires: ['payment.view'] },
       { label: 'Accounts', href: '/accounts', icon: Wallet, requires: ['ledger.view'] },
-      { label: 'Transactions', href: '/transactions', icon: ScrollText, phase: 5 },
-      { label: 'Expenses', href: '/expenses', icon: FileText, phase: 5 },
+      { label: 'Cash & bank', href: '/banking', icon: Landmark, requiresAny: ['deposit.record', 'ledger.view', 'cheque.manage'] },
+      { label: 'Expenses', href: '/expenses', icon: FileText, requiresAny: ['expense.submit', 'expense.view'] },
+      { label: 'Journal', href: '/journals', icon: ScrollText, requires: ['ledger.view'] },
+      { label: 'Books', href: '/books', icon: BookOpen, requires: ['ledger.view'] },
       { label: 'Reports', href: '/reports', icon: BarChart3, phase: 7 },
     ],
   },

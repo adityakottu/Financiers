@@ -28,6 +28,10 @@ const envSchema = z.object({
   SESSION_ABSOLUTE_HOURS: z.coerce.number().int().min(1).default(12),
   FILE_STORAGE_DIR: z.string().default('./storage'),
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
+  /** clamd address for malware scanning, host:port (doc 11 §5). Required in production. */
+  CLAMAV_ADDRESS: z.string().regex(/^[\w.-]+:\d+$/).optional(),
+  /** Forces maintenance mode on (refuse all changes) regardless of the in-app switch. */
+  MAINTENANCE_MODE: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   /** Public URL of the web app, printed on receipts (QR code for verification). */
   PUBLIC_WEB_URL: z.string().url().optional(),
   /** SMS: 'msg91' (DLT-registered templates) or 'log' (nothing is sent; messages are marked SIMULATED). */
@@ -65,6 +69,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   }
   const production = c.NODE_ENV === 'production';
   if (production && !c.ENFORCE_MFA) throw new Error('ENFORCE_MFA cannot be disabled in production');
+  if (production && !c.CLAMAV_ADDRESS) throw new Error('CLAMAV_ADDRESS (clamd host:port) is required in production: uploads must be virus-scanned');
   const cookieSecure = c.COOKIE_SECURE ?? production;
   if (c.SMS_PROVIDER === 'msg91' && !(c.MSG91_AUTH_KEY && c.MSG91_SENDER_ID)) {
     throw new Error('SMS_PROVIDER=msg91 needs MSG91_AUTH_KEY and MSG91_SENDER_ID');
@@ -90,6 +95,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     sessionAbsoluteMs: c.SESSION_ABSOLUTE_HOURS * 3_600_000,
     fileStorageDir: c.FILE_STORAGE_DIR,
     trustProxy: c.TRUST_PROXY,
+    maintenanceMode: c.MAINTENANCE_MODE,
+    clamav: c.CLAMAV_ADDRESS ? { host: c.CLAMAV_ADDRESS.split(':')[0]!, port: Number(c.CLAMAV_ADDRESS.split(':')[1]) } : null,
     publicWebUrl: (c.PUBLIC_WEB_URL ?? c.APP_ORIGIN.split(',')[0]!.trim()).replace(/\/$/, ''),
     workers: c.WORKERS ?? c.NODE_ENV !== 'test',
     sms: { provider: c.SMS_PROVIDER, authKey: c.MSG91_AUTH_KEY ?? null, senderId: c.MSG91_SENDER_ID ?? null, webhookToken: c.MSG91_WEBHOOK_TOKEN ?? null },

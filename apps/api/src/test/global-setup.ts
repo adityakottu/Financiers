@@ -2,9 +2,17 @@ import { Client } from 'pg';
 import { migrate } from '../db/migrate';
 import { createDb } from '../db/db';
 import { syncReferenceData } from '../db/seed';
+import { applyRoles } from '../db/roles';
 
 export const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? 'postgresql://fin:fin@localhost:5432/financiers_test';
+
+/**
+ * The API under test connects as the least-privilege role fin_app (doc 11 §7), exactly as in
+ * production; fixtures use the owner connection. Set TEST_AS_OWNER=1 to run the API as the owner.
+ */
+const APP_ROLE_PASSWORD = 'fin-app-test-only';
+export const TEST_APP_DATABASE_URL = process.env.TEST_AS_OWNER ? TEST_DATABASE_URL : TEST_DATABASE_URL.replace(/\/\/[^@]+@/, `//fin_app:${APP_ROLE_PASSWORD}@`);
 
 /** Fresh database for every test run: drop, create, migrate, load reference data. */
 export default async function setup() {
@@ -27,4 +35,9 @@ export default async function setup() {
   ]).execute();
   await syncReferenceData(db); // also creates each branch's cash accounts
   await db.destroy();
+  await applyRoles(TEST_DATABASE_URL);
+  const owner = new Client({ connectionString: TEST_DATABASE_URL });
+  await owner.connect();
+  await owner.query(`ALTER ROLE fin_app PASSWORD '${APP_ROLE_PASSWORD}'`);
+  await owner.end();
 }

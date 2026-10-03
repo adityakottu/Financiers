@@ -1,6 +1,9 @@
 import { Controller, DynamicModule, Get, Inject, MiddlewareConsumer, Module, NestModule, OnApplicationShutdown } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { PgThrottlerStorage } from './common/rate-limit.storage';
+import { SystemController, SystemService } from './common/system.service';
+import { IntegrityController, IntegrityService } from './integrity/integrity.service';
 import { sql } from 'kysely';
 import { AuditController } from './audit/audit.controller';
 import { AuditService } from './audit/audit.service';
@@ -64,22 +67,30 @@ class HealthController {
   }
 }
 
+const THROTTLE_DB = Symbol('THROTTLE_DB');
+
 class DbLifecycle implements OnApplicationShutdown {
-  constructor(@Inject(DB_TOKEN) private readonly db: Db) {}
+  constructor(
+    @Inject(DB_TOKEN) private readonly db: Db,
+    @Inject(THROTTLE_DB) private readonly throttleDb: Db,
+  ) {}
   async onApplicationShutdown() {
-    await this.db.destroy();
+    await Promise.all([this.db.destroy(), this.throttleDb.destroy()]);
   }
 }
 
 @Module({})
 export class AppModule implements NestModule {
   static forRoot(config: AppConfig): DynamicModule {
+    // Rate-limit counters live in PostgreSQL so limits hold across API instances (own small pool).
+    const throttleDb = createDb(config.databaseUrl, 3);
     return {
       module: AppModule,
       imports: [
         ThrottlerModule.forRoot({
           // Generous default per client IP; auth routes set tighter limits with @Throttle.
           throttlers: [{ name: 'default', ttl: 60_000, limit: 300 }],
+          storage: new PgThrottlerStorage(throttleDb),
           // Integration tests make many logins from one IP; they opt in with a header when testing limits.
           skipIf: (ctx) =>
             config.env === 'test' && !ctx.switchToHttp().getRequest<{ headers: Record<string, string> }>().headers['x-test-throttle'],
@@ -87,6 +98,8 @@ export class AppModule implements NestModule {
       ],
       controllers: [
         HealthController,
+        SystemController,
+        IntegrityController,
         AuthController,
         UsersController,
         BranchesController,
@@ -122,8 +135,11 @@ export class AppModule implements NestModule {
       providers: [
         { provide: CONFIG, useValue: config },
         { provide: DB_TOKEN, useFactory: () => createDb(config.databaseUrl) },
+        { provide: THROTTLE_DB, useValue: throttleDb },
         DbLifecycle,
         CryptoService,
+        SystemService,
+        IntegrityService,
         AccessService,
         SessionService,
         AuthService,

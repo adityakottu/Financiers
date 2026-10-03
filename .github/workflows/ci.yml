@@ -44,6 +44,8 @@ jobs:
         run: pnpm --filter "./packages/**" run test
       - name: Typecheck
         run: pnpm -r run typecheck
+      - name: Security lint (no SQL string building, no raw HTML, no eval, no console in the API)
+        run: pnpm lint
       - name: API tests (unit + integration against PostgreSQL 16)
         run: pnpm --filter @fin/api run test
       - name: Build API

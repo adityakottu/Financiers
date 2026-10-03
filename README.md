@@ -3,8 +3,8 @@
 Lending, collections, accounting and daily reconciliation system for an
 asset-backed lending business in India.
 
-**Current phase:** Phase 5 — Accounting ✅ (see [Phase 5 report](docs/phase-5-report.md);
-earlier: [Phase 4](docs/phase-4-report.md), [Phase 3](docs/phase-3-report.md), [Phase 2](docs/phase-2-report.md)).
+**Current phase:** Phase 6 — Daily reconciliation ✅ (see [Phase 6 report](docs/phase-6-report.md);
+earlier: [Phase 5](docs/phase-5-report.md), [Phase 4](docs/phase-4-report.md), [Phase 3](docs/phase-3-report.md), [Phase 2](docs/phase-2-report.md)).
 Architecture and specifications: [docs/README.md](docs/README.md).
 
 ## Repository layout

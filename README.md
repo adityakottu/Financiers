@@ -3,8 +3,8 @@
 Lending, collections, accounting and daily reconciliation system for an
 asset-backed lending business in India.
 
-**Current phase:** Phase 3 — Lending & ledger core ✅ (see [Phase 3 report](docs/phase-3-report.md);
-earlier: [Phase 2 report](docs/phase-2-report.md)).
+**Current phase:** Phase 4 — Collections ✅ (see [Phase 4 report](docs/phase-4-report.md);
+earlier: [Phase 3](docs/phase-3-report.md), [Phase 2](docs/phase-2-report.md)).
 Architecture and specifications: [docs/README.md](docs/README.md).
 
 ## Repository layout
@@ -43,7 +43,12 @@ pnpm dev:web     # http://localhost:3000  (proxies /api/v1 to the API)
 The demo data includes branches KKD and RJY, users `manager.kkd`, `manager.rjy`
 and `collector.kkd` (password = `DEMO_PASSWORD`), 36 customers, three loan
 products and loans in every state, with end-of-day processing run for the last
-10 days.
+10 days, then a day of collections by `collector.kkd` (payments, receipts,
+a reversal awaiting approval, visits).
+
+Messaging runs in test mode (nothing is sent; messages are marked "Not sent (test
+mode)") until MSG91 / WhatsApp Business Cloud API credentials are set — see
+`apps/api/.env.example`.
 
 Production web build: `pnpm --filter @fin/web build`. Do not run it with
 `NODE_ENV=development` exported in your shell (Next.js then fails with

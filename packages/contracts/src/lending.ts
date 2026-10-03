@@ -237,6 +237,8 @@ export const loanListQuerySchema = z.object({
   branchId: z.string().uuid().optional(),
   customerId: z.string().uuid().optional(),
   overdueOnly: z.enum(['true', 'false']).optional(),
+  /** 'none' = loans nobody is assigned to; or an employee id. */
+  collector: z.union([z.literal('none'), z.string().uuid()]).optional(),
 });
 
 export const bankAccountCreateSchema = z

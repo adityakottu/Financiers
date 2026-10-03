@@ -1,10 +1,12 @@
 'use client';
 
 import { CATEGORY_LABELS, DISBURSEMENT_MODES, LoanCategory } from '@fin/contracts';
-import { Ban, Banknote, CheckCircle2, Download, FileSpreadsheet, Send, XCircle } from 'lucide-react';
+import { Ban, Banknote, CheckCircle2, Download, FileSpreadsheet, HandCoins, Send, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { use, useEffect, useMemo, useState } from 'react';
 import { DpdBadge, FREQUENCY_LABELS, InstallmentRow, LoanStatusBadge, METHOD_LABELS, ScheduleTable, todayIST } from '@/components/lending';
+import { LoanCollectionsPanel, LoanPaymentsPanel } from '@/components/loan-collections';
+import { CollectDialog } from '@/components/payments';
 import { useToast } from '@/components/toast';
 import { Alert, Badge, Button, Card, CardHeader, Detail, Dialog, EmptyState, Field, Input, PageHeader, Select, Spinner, StatusBadge, Table, Tabs, Td, Textarea, Th } from '@/components/ui';
 import { api, ApiError, get, newIdempotencyKey } from '@/lib/api';
@@ -69,16 +71,23 @@ interface Loan {
   people: { createdBy: string | null; submittedBy: string | null; approvedBy: string | null; rejectedBy: string | null; cancelledBy: string | null };
   disbursementAccount: { code: string; name: string } | null;
   canDecide: boolean;
+  branch_id: string;
+  advance_balance: string;
+  total_collected: string;
+  closed_at: string | null;
+  collector: { id: string; full_name: string; employee_code: string } | null;
+  closure: { closed_on: string; total_paid: string; advance_remaining: string; checklist: Record<string, unknown> } | null;
 }
 
-type Tab = 'schedule' | 'asset' | 'charges' | 'accounting' | 'statement';
+type Tab = 'schedule' | 'payments' | 'collections' | 'asset' | 'charges' | 'accounting' | 'statement';
 
 export default function LoanPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { can } = useSession();
   const { data: loan, loading, error, reload } = useApi<Loan>(`/loans/${id}`);
   const [tab, setTab] = useState<Tab>('schedule');
-  const [dialog, setDialog] = useState<'approve' | 'reject' | 'cancel' | 'disburse' | null>(null);
+  const [dialog, setDialog] = useState<'approve' | 'reject' | 'cancel' | 'disburse' | 'collect' | null>(null);
+  const [paid, setPaid] = useState(0);
 
   if (loading && !loan) return <Spinner />;
   if (error || !loan) return <EmptyState title="Loan not found" body="It may not exist, or it belongs to a branch you can’t access." />;
@@ -113,6 +122,20 @@ export default function LoanPage({ params }: { params: Promise<{ id: string }> }
 
       <Workflow loan={loan} />
 
+      {loan.closure && (
+        <div className="mb-4">
+        <Alert tone="ok">
+          Fully repaid and closed on {date(loan.closure.closed_on)} · {inr(loan.closure.total_paid)} received.
+          {Number(loan.closure.advance_remaining) > 0 && ` ${inr(loan.closure.advance_remaining)} paid in excess is owed back to the customer.`}
+        </Alert>
+        </div>
+      )}
+      {active && Number(loan.advance_balance) > 0 && (
+        <p className="mb-4 text-[13px] text-muted">
+          {inr(loan.advance_balance)} paid in advance — it is applied automatically when the next installment falls due.
+        </p>
+      )}
+
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {(active
           ? [
@@ -141,6 +164,8 @@ export default function LoanPage({ params }: { params: Promise<{ id: string }> }
         onChange={setTab}
         tabs={[
           { id: 'schedule', label: 'Schedule', count: loan.installments.length },
+          ...(can('payment.view') && loan.disbursed_on ? [{ id: 'payments' as Tab, label: 'Payments' }] : []),
+          ...(['ACTIVE', 'APPROVED', 'CLOSED'].includes(loan.status) ? [{ id: 'collections' as Tab, label: 'Collections' }] : []),
           { id: 'asset', label: 'Asset' },
           { id: 'charges', label: 'Fees & charges', count: loan.charges.length },
           ...(can('ledger.view') ? [{ id: 'accounting' as Tab, label: 'Accounting' }] : []),
@@ -157,6 +182,8 @@ export default function LoanPage({ params }: { params: Promise<{ id: string }> }
             <ScheduleTable installments={loan.installments} />
           </Card>
         )}
+        {tab === 'payments' && <LoanPaymentsPanel loanId={loan.id} refresh={paid} />}
+        {tab === 'collections' && <LoanCollectionsPanel loan={loan} onChanged={reload} />}
         {tab === 'asset' && asset && <AssetPanel a={asset} />}
         {tab === 'charges' && <ChargesPanel loan={loan} />}
         {tab === 'accounting' && <AccountingPanel id={loan.id} />}
@@ -167,11 +194,21 @@ export default function LoanPage({ params }: { params: Promise<{ id: string }> }
       {dialog === 'reject' && <DecisionDialog loan={loan} kind="reject" onClose={() => setDialog(null)} onDone={reload} />}
       {dialog === 'cancel' && <DecisionDialog loan={loan} kind="cancel" onClose={() => setDialog(null)} onDone={reload} />}
       {dialog === 'disburse' && <DisburseDialog loan={loan} onClose={() => setDialog(null)} onDone={reload} />}
+      {dialog === 'collect' && (
+        <CollectDialog
+          loan={loan}
+          onClose={() => setDialog(null)}
+          onDone={() => {
+            reload();
+            setPaid((n) => n + 1);
+          }}
+        />
+      )}
     </>
   );
 }
 
-function Actions({ loan, open }: { loan: Loan; open: (d: 'approve' | 'reject' | 'cancel' | 'disburse') => void }) {
+function Actions({ loan, open }: { loan: Loan; open: (d: 'approve' | 'reject' | 'cancel' | 'disburse' | 'collect') => void }) {
   const { can } = useSession();
   const toast = useToast();
   const [submit, submitting] = useSubmit(async () => {
@@ -203,6 +240,11 @@ function Actions({ loan, open }: { loan: Loan; open: (d: 'approve' | 'reject' | 
       {loan.status === 'APPROVED' && can('loan.disburse') && (
         <Button onClick={() => open('disburse')}>
           <Banknote className="size-4" /> Disburse
+        </Button>
+      )}
+      {loan.status === 'ACTIVE' && can('payment.collect') && (
+        <Button onClick={() => open('collect')}>
+          <HandCoins className="size-4" /> Collect payment
         </Button>
       )}
       {['DRAFT', 'PENDING_APPROVAL', 'APPROVED'].includes(loan.status) && can('loan.cancel') && (

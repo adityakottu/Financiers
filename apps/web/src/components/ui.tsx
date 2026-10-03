@@ -207,6 +207,13 @@ export const STATUS_TONE: Record<string, Tone> = {
   REJECTED: 'bad',
   INFECTED: 'bad',
   LOCKED: 'bad',
+  POSTED: 'ok',
+  ISSUED: 'ok',
+  REVERSED: 'bad',
+  CANCELLED: 'bad',
+  REVERSAL_PENDING: 'warn',
+  REQUESTED: 'warn',
+  APPROVED: 'ok',
 };
 
 export function StatusBadge({ status }: { status: string }) {

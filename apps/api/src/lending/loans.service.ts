@@ -640,7 +640,7 @@ export class LoansService {
 
   /* =========================== Reads =========================== */
 
-  async list(auth: AuthContext, q: { limit: number; cursor?: string; q?: string; status?: string; category?: string; branchId?: string; customerId?: string; overdueOnly?: string }) {
+  async list(auth: AuthContext, q: { limit: number; cursor?: string; q?: string; status?: string; category?: string; branchId?: string; customerId?: string; overdueOnly?: string; collector?: string }) {
     let sel = this.scoped(this.db, auth)
       .select([
         'l.id',
@@ -665,6 +665,8 @@ export class LoansService {
         'c.full_name as customer_name',
         'c.customer_no',
         'b.code as branch_code',
+        'l.assigned_collector_id',
+        (eb) => eb.selectFrom('employees as e').select('e.full_name').whereRef('e.id', '=', 'l.assigned_collector_id').as('collector_name'),
         (eb) =>
           eb
             .selectFrom('assets as a')
@@ -681,6 +683,8 @@ export class LoansService {
     if (q.branchId) sel = sel.where('l.branch_id', '=', q.branchId);
     if (q.customerId) sel = sel.where('l.customer_id', '=', q.customerId);
     if (q.overdueOnly === 'true') sel = sel.where('l.dpd', '>', 0);
+    if (q.collector === 'none') sel = sel.where('l.assigned_collector_id', 'is', null);
+    else if (q.collector) sel = sel.where('l.assigned_collector_id', '=', q.collector);
     if (q.q) {
       const t = q.q.replace(/[%_\\]/g, '');
       sel = sel.where((eb) => eb.or([eb('l.loan_no', 'ilike', `%${t}%`), eb('c.full_name', 'ilike', `%${t}%`), eb('c.customer_no', 'ilike', `${t}%`)]));
@@ -727,6 +731,10 @@ export class LoansService {
         cancelledBy: name(l.cancelled_by),
       },
       disbursementAccount: account ?? null,
+      collector: l.assigned_collector_id
+        ? ((await this.db.selectFrom('employees').select(['id', 'full_name', 'employee_code']).where('id', '=', l.assigned_collector_id).executeTakeFirst()) ?? null)
+        : null,
+      closure: l.status === 'CLOSED' ? ((await this.db.selectFrom('loan_closures').selectAll().where('loan_id', '=', id).where('status', '=', 'CLOSED').executeTakeFirst()) ?? null) : null,
       canDecide: l.created_by !== auth.userId,
     };
   }

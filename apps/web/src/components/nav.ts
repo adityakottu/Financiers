@@ -30,6 +30,8 @@ export interface NavItem {
   requires?: Permission[];
   /** Planned module: shown dimmed with the phase that delivers it. */
   phase?: number;
+  /** Only for users linked to a collector employee record. */
+  collectorOnly?: boolean;
 }
 
 export interface NavGroup {
@@ -46,16 +48,18 @@ export const NAV: NavGroup[] = [
       { label: 'Loans', href: '/loans', icon: Landmark, requires: ['loan.view'] },
       { label: 'Calculator', href: '/calculator', icon: Calculator, requires: ['loan.view'] },
       { label: 'Assets', href: '/assets', icon: Boxes, requires: ['loan.view'] },
-      { label: 'Collections', href: '/collections', icon: HandCoins, phase: 4 },
-      { label: 'Installments due', href: '/installments', icon: CalendarClock, phase: 4 },
+      { label: 'My collections', href: '/collect', icon: HandCoins, requires: ['payment.collect'], collectorOnly: true },
+      { label: 'Collections', href: '/collections', icon: HandCoins, requires: ['collection.view_team'] },
+      { label: 'Installments due', href: '/installments', icon: CalendarClock, requires: ['loan.view'] },
     ],
   },
   {
     label: 'Money',
     items: [
       { label: 'Reconciliation', href: '/reconciliation', icon: Scale, phase: 6 },
+      { label: 'Payments & receipts', href: '/payments', icon: Receipt, requires: ['payment.view'] },
       { label: 'Accounts', href: '/accounts', icon: Wallet, requires: ['ledger.view'] },
-      { label: 'Transactions', href: '/transactions', icon: Receipt, phase: 5 },
+      { label: 'Transactions', href: '/transactions', icon: ScrollText, phase: 5 },
       { label: 'Expenses', href: '/expenses', icon: FileText, phase: 5 },
       { label: 'Reports', href: '/reports', icon: BarChart3, phase: 7 },
     ],
@@ -67,8 +71,8 @@ export const NAV: NavGroup[] = [
       { label: 'Branches', href: '/admin/branches', icon: Building2, requires: ['branch.manage'] },
       { label: 'Users & access', href: '/admin/users', icon: ShieldCheck, requires: ['user.manage'] },
       { label: 'Loan products', href: '/admin/products', icon: Package, requires: ['loan.view'] },
-      { label: 'Communications', href: '/communications', icon: MessageSquare, phase: 4 },
-      { label: 'Notifications', href: '/notifications', icon: Bell, phase: 4 },
+      { label: 'Communications', href: '/communications', icon: MessageSquare, requires: ['message.view'] },
+      { label: 'Notifications', href: '/notifications', icon: Bell, phase: 7 },
       { label: 'Audit log', href: '/audit', icon: ScrollText, requires: ['audit.view'] },
       { label: 'Settings', href: '/admin/settings', icon: Settings, requires: ['settings.company'] },
     ],

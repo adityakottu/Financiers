@@ -28,6 +28,7 @@ interface LoanKpis {
 }
 
 interface Summary {
+  collections: { today: string; count: number; byMethod: Record<string, string>; pendingReversals: number } | null;
   loans: LoanKpis | null;
   customers: { active: number; total: number; kycPending: number; newToday: number } | null;
   staff: { active: number; collectors: number } | null;
@@ -90,7 +91,17 @@ export default function DashboardPage() {
               ) : (
                 <Planned label="Due today" icon={CalendarClock} phase="Phase 3" what="Installments falling due" />
               )}
-              <Planned label="Total collections" icon={HandCoins} phase={data.availableFrom.collections!} what="Cash, UPI and bank split" />
+              {data.collections ? (
+                <Kpi
+                  label="Collected today"
+                  value={inr(data.collections.today, { decimals: false })}
+                  icon={HandCoins}
+                  hint={`${count(data.collections.count)} payments · cash ${inr(data.collections.byMethod.CASH, { decimals: false })} · UPI ${inr(data.collections.byMethod.UPI, { decimals: false })} · bank ${inr(data.collections.byMethod.BANK_TRANSFER, { decimals: false })}${data.collections.pendingReversals ? ` · ${data.collections.pendingReversals} reversal${data.collections.pendingReversals === 1 ? '' : 's'} to approve` : ''}`}
+                  href="/payments"
+                />
+              ) : (
+                <Planned label="Total collections" icon={HandCoins} phase="Phase 4" what="Cash, UPI and bank split" />
+              )}
               <Planned label="Reconciliation" icon={Scale} phase={data.availableFrom.reconciliation!} what="Reconciled / pending / difference" />
               {data.loans ? (
                 <Kpi label="Disbursed today" value={inr(data.loans.disbursedToday, { decimals: false })} icon={Landmark} hint={`${count(data.loans.disbursedTodayCount)} loans`} href="/loans?status=ACTIVE" />
@@ -201,7 +212,10 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <p className="border-t border-line px-5 py-3 text-[12px] text-subtle">
-                  Per-collector targets, collections and settlement differences arrive with Collections ({data.availableFrom.collections}).
+                  <Link href="/collections" className="hover:underline">
+                    Collections by collector
+                  </Link>{' '}
+                  · settlement differences arrive with daily reconciliation ({data.availableFrom.reconciliation}).
                 </p>
               </Card>
             )}

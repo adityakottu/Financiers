@@ -184,7 +184,13 @@ export class PaymentsService {
   /** Where the money sits after this payment (doc 07 §3 `{coll}`). */
   private async debitAccount(tx: Tx, ctx: RequestContext, loan: LoanRow, input: PaymentCreateInput) {
     const branchAccount = async (prefix: string) => {
-      const a = await tx.selectFrom('accounts').select(['id', 'code']).where('code', '=', `${prefix}-${loan.branch_code}`).executeTakeFirst();
+      const find = () => tx.selectFrom('accounts').select(['id', 'code']).where('code', '=', `${prefix}-${loan.branch_code}`).executeTakeFirst();
+      let a = await find();
+      if (!a) {
+        // Branch created outside the normal path: create its standard accounts (idempotent).
+        await this.ledger.ensureBranchAccounts(tx, { id: loan.branch_id, code: loan.branch_code, name: loan.branch_name });
+        a = await find();
+      }
       if (!a) throw unprocessable('ACCOUNT_MISSING', `Account ${prefix}-${loan.branch_code} does not exist. Ask an administrator to run setup.`);
       return a;
     };

@@ -279,6 +279,32 @@ export class CollectionsService {
     return { visits, promises, assignments };
   }
 
+  /** Unpaid installments in scope: due in a date range, or overdue. */
+  async installments(auth: AuthContext, q: { view: 'DUE' | 'OVERDUE'; from: string; to: string; collector?: string; limit: number }) {
+    let sel = this.loans
+      .scoped(this.db, auth)
+      .innerJoin('loan_installments as i', 'i.loan_id', 'l.id')
+      .leftJoin('employees as e', 'e.id', 'l.assigned_collector_id')
+      .select([
+        'i.id', 'i.installment_no', 'i.due_date', 'i.status', 'i.days_overdue',
+        sql<string>`(i.total_due - i.total_paid)::text`.as('outstanding'),
+        'l.id as loan_id', 'l.loan_no', 'l.dpd', 'c.id as customer_id', 'c.full_name as customer_name', 'c.mobile', 'c.village_town', 'b.code as branch_code', 'e.full_name as collector_name',
+      ])
+      .where('l.status', '=', 'ACTIVE')
+      .where('i.status', 'not in', ['PAID', 'WAIVED', 'RESCHEDULED'])
+      .where(sql<boolean>`i.total_paid < i.total_due`);
+    sel = q.view === 'OVERDUE' ? sel.where('i.due_date', '<', istToday()) : sel.where('i.due_date', '>=', q.from).where('i.due_date', '<=', q.to);
+    if (q.collector === 'none') sel = sel.where('l.assigned_collector_id', 'is', null);
+    else if (q.collector) sel = sel.where('l.assigned_collector_id', '=', q.collector);
+    const rows = await sel.orderBy('i.due_date').orderBy('c.full_name').limit(q.limit).execute();
+    const showNumber = auth.permissions.has('customer.view_contact');
+    return {
+      data: rows.map((r) => ({ ...r, mobile: showNumber ? r.mobile : r.mobile ? `******${r.mobile.slice(-4)}` : null })),
+      total: Money.sum(rows.map((r) => Money.of(r.outstanding))).toString(),
+      truncated: rows.length === q.limit,
+    };
+  }
+
   /** Nightly: promises whose date has passed become KEPT / PARTIAL / BROKEN by what was actually paid. */
   async resolvePromises(db: Executor, date: string) {
     const r = await sql`

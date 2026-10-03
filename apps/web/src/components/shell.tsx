@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown, LayoutDashboard, LogOut, Menu, MoreHorizontal, Search, User, Users, X } from 'lucide-react';
+import { ChevronDown, HandCoins, LayoutDashboard, LogOut, Menu, MoreHorizontal, Search, User, Users, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -25,11 +25,11 @@ function Brand() {
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const { can } = useSession();
+  const { can, me } = useSession();
   return (
     <nav className="space-y-6" aria-label="Main">
       {NAV.map((group, gi) => {
-        const items = group.items.filter((i) => i.phase || !i.requires || can(...i.requires));
+        const items = group.items.filter((i) => (i.phase || !i.requires || can(...i.requires)) && (!i.collectorOnly || !!me?.employee?.isCollector));
         if (!items.length) return null;
         return (
           <div key={gi}>
@@ -165,7 +165,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="flex-1 overflow-y-auto px-3 py-5">
           <NavLinks />
         </div>
-        <div className="border-t border-white/10 px-5 py-3 text-[11px] text-white/35">Phase 3 · Lending &amp; ledger</div>
+        <div className="border-t border-white/10 px-5 py-3 text-[11px] text-white/35">Phase 4 · Collections</div>
       </aside>
 
       {/* Mobile drawer */}
@@ -216,7 +216,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="Quick">
         {[
           { href: '/', label: 'Home', icon: LayoutDashboard },
-          { href: '/customers', label: 'Customers', icon: Users },
+          me.employee?.isCollector && me.permissions.includes('payment.collect')
+            ? { href: '/collect', label: 'Collect', icon: HandCoins }
+            : { href: '/customers', label: 'Customers', icon: Users },
           { href: '#search', label: 'Search', icon: Search },
           { href: '#more', label: 'More', icon: MoreHorizontal },
         ].map((i) => {

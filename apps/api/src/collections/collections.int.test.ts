@@ -182,6 +182,22 @@ describe('assignment', () => {
   });
 });
 
+describe('lists', () => {
+  it('installments due / overdue, and loans by collector', async () => {
+    const loan = await activeLoan({ assign: null });
+    const overdue = (await manager.get('/collections/installments?view=OVERDUE')).body;
+    expect(overdue.data.some((r: { loan_id: string; collector_name: string | null }) => r.loan_id === loan.id && r.collector_name === null)).toBe(true);
+    expect(Money.of(overdue.total).isPositive()).toBe(true);
+    const none = (await manager.get('/loans?status=ACTIVE&collector=none')).body.data;
+    expect(none.some((l: { id: string }) => l.id === loan.id)).toBe(true);
+    await manager.post('/collections/assign', { loanIds: [loan.id], employeeId: collectorEmp });
+    const mine = (await manager.get(`/loans?collector=${collectorEmp}`)).body.data;
+    expect(mine.find((l: { id: string }) => l.id === loan.id).collector_name).toMatch(/^Collector/);
+    const masked = (await collector.get('/collections/installments?view=OVERDUE')).body.data;
+    expect(masked.every((r: { collector_name: string }) => r.collector_name !== null)).toBe(true); // collectors see only their loans
+  });
+});
+
 describe('recording payments', () => {
   it('previews, then records cash: allocation, installments, journal, receipt, balances', async () => {
     const loan = await activeLoan();

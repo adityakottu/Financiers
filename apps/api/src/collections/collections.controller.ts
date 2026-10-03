@@ -57,6 +57,23 @@ export class LoanCollectionsController {
     return r.body;
   }
 
+  /** Company bank accounts a transfer can be recorded into. */
+  @Require('payment.collect')
+  @Get(':id/payments/accounts')
+  async bankAccounts(@Ctx() ctx: RequestContext, @Param('id', ParseUUIDPipe) id: string) {
+    const loan = await this.loans.scoped(this.db, ctx.auth).select('l.id').where('l.id', '=', id).executeTakeFirst();
+    if (!loan) throw notFound('Loan');
+    const rows = await this.db
+      .selectFrom('accounts as a')
+      .innerJoin('bank_accounts as b', 'b.account_id', 'a.id')
+      .select(['a.id', 'a.code', 'a.name', 'b.bank_name', 'b.account_no_last4'])
+      .where('a.subtype', '=', 'BANK')
+      .where('a.is_active', '=', true)
+      .orderBy('a.code')
+      .execute();
+    return { data: rows };
+  }
+
   @Require('loan.view')
   @Get(':id/collections')
   activity(@Ctx() ctx: RequestContext, @Param('id', ParseUUIDPipe) id: string) {
@@ -164,6 +181,23 @@ export class CollectionsController {
   summary(@Ctx() ctx: RequestContext, @Query() q: unknown) {
     const p = parse(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), branchId: z.string().uuid().optional() }), q);
     return this.collections.summary(ctx.auth, p.date ?? istToday(), p.branchId);
+  }
+
+  @Require('loan.view')
+  @Get('installments')
+  installments(@Ctx() ctx: RequestContext, @Query() q: unknown) {
+    const today = istToday();
+    const p = parse(
+      z.object({
+        view: z.enum(['DUE', 'OVERDUE']).default('DUE'),
+        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).default(today),
+        to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).default(today),
+        collector: z.union([z.literal('none'), z.string().uuid()]).optional(),
+        limit: z.coerce.number().int().min(1).max(1000).default(500),
+      }),
+      q,
+    );
+    return this.collections.installments(ctx.auth, p);
   }
 
   @Require('collection.assign')

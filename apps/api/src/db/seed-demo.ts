@@ -6,13 +6,16 @@ import { NumberingService } from '../numbering/numbering.service';
 import { createDb } from './db';
 import { seed } from './seed';
 import { NestFactory } from '@nestjs/core';
-import { ALL_PERMISSIONS } from '@fin/contracts';
+import { ALL_PERMISSIONS, paymentCreateSchema } from '@fin/contracts';
 import { AppModule } from '../app.module';
 import type { RequestContext } from '../auth/context';
 import { istToday } from '../common/dates';
 import { DB_TOKEN, Db } from './db';
 import { JobsService } from '../jobs/jobs.service';
-import { LedgerService } from '../ledger/ledger.service';
+import { CollectionsService } from '../collections/collections.service';
+import { PaymentsService } from '../collections/payments.service';
+import { MessagingService } from '../messaging/messaging.service';
+import { ensureBranchAccounts, LedgerService } from '../ledger/ledger.service';
 import { LoansService } from '../lending/loans.service';
 
 /**
@@ -36,7 +39,7 @@ const pick = <T>(a: T[], i: number) => a[i % a.length]!;
 
 async function main() {
   await import('reflect-metadata');
-  const config = loadConfig();
+  const config = loadConfig({ ...process.env, WORKERS: 'false' }); // no background relay or scheduler while seeding
   if (config.production) throw new Error('Refusing to load demo data in production');
   const demoPassword = process.env.DEMO_PASSWORD;
   if (!demoPassword) throw new Error('DEMO_PASSWORD is required');
@@ -62,7 +65,8 @@ async function main() {
     ]) {
       await tx.insertInto('branches').values({ company_id: company.id, code: code!, name: name!, address: `${name}, Andhra Pradesh` }).onConflict((oc) => oc.column('code').doNothing()).execute();
     }
-    const branches = await tx.selectFrom('branches').select(['id', 'code']).execute();
+    const branches = await tx.selectFrom('branches').select(['id', 'code', 'name']).execute();
+    for (const b of branches) await ensureBranchAccounts(tx, b);
     const byCode = Object.fromEntries(branches.map((b) => [b.code, b.id]));
     const roles = Object.fromEntries((await tx.selectFrom('roles').select(['id', 'code']).execute()).map((r) => [r.code, r.id]));
     const hash = await hashPassword(demoPassword);
@@ -265,10 +269,43 @@ async function seedLoans(config: ReturnType<typeof loadConfig>, _pw: string) {
     if (status === 'APPROVED') continue;
     await db.transaction().execute((tx) => loans.disburse(tx, maker, loan.id, { accountId: bank.id, mode: 'BANK_TRANSFER', reference: `UTR${String(88120000 + i * 173)}`, disbursedOn: start }));
   }
-  // No payments are faked: collections start in Phase 4, so overdue figures here are real.
   // Catch up end-of-day for the last 10 days so statuses, accruals and penalties are realistic.
   await db.deleteFrom('job_runs').execute();
   for (let k = 10; k >= 0; k--) await jobs.runDaily(addDays(today, -k), { userId: null });
+
+  // Collections today, through the real services: assignment, payments with receipts, a reversal
+  // waiting for approval, visits and a promise to pay. Nothing is written around the services.
+  const collections = app.get(CollectionsService);
+  const payments = app.get(PaymentsService);
+  const messaging = app.get(MessagingService);
+  const collectorEmp = await db.selectFrom('employees').select('id').where('user_id', '=', users['collector.kkd']!.id).executeTakeFirstOrThrow();
+  const kkdActive = await db
+    .selectFrom('loans as l')
+    .innerJoin('branches as b', 'b.id', 'l.branch_id')
+    .select(['l.id', 'l.loan_no', 'l.overdue_amount', 'l.next_due_amount'])
+    .where('b.code', '=', 'KKD')
+    .where('l.status', '=', 'ACTIVE')
+    .orderBy('l.loan_no')
+    .execute();
+  await collections.assign(admin, { loanIds: kkdActive.map((l) => l.id), employeeId: collectorEmp.id, reason: 'Kakinada town route' });
+  const collector: RequestContext = { ...ctx('collector.kkd'), auth: { ...ctx('collector.kkd').auth, employeeId: collectorEmp.id } };
+  const pay = (loanId: string, body: Record<string, unknown>, who = collector) =>
+    db.transaction().execute((tx) => payments.record(tx, who, loanId, paymentCreateSchema.parse({ notify: true, ...body })));
+  const amt = (v: string | null, f = 1) => (Math.max(1, Math.round(Number(v ?? '0') * f))).toFixed(2);
+  const paid: string[] = [];
+  for (const [i, l] of kkdActive.entries()) {
+    if (Number(l.overdue_amount) <= 0 && i % 3) continue;
+    const method = i % 4 === 1 ? { method: 'UPI', reference: `UPI${String(41760000 + i * 97)}` } : { method: 'CASH' };
+    const amount = Number(l.overdue_amount) > 0 ? amt(l.overdue_amount, i % 2 ? 1 : 0.5) : amt(l.next_due_amount);
+    if (i % 5 === 4) continue; // some customers not met today
+    const r = await pay(l.id, { amount, ...method, location: 'Kakinada' });
+    paid.push(r.id);
+  }
+  const unpaid = kkdActive.filter((l, i) => i % 5 === 4);
+  if (unpaid[0]) await collections.recordVisit(collector, unpaid[0].id, { outcome: 'PROMISED', promisedAmount: amt(unpaid[0].overdue_amount || unpaid[0].next_due_amount), promisedDate: addDays(today, 2), notes: 'Will pay after Friday market' });
+  if (unpaid[1]) await collections.recordVisit(collector, unpaid[1].id, { outcome: 'NOT_AVAILABLE', notes: 'House locked; neighbour says back tomorrow' });
+  if (paid[1]) await payments.requestReversal(collector, paid[1], { reasonCode: 'WRONG_AMOUNT', reasonText: 'Entered 500 more than the customer paid' });
+  await messaging.relayOnce(200);
   await app.close();
 }
 

@@ -51,12 +51,13 @@ function LoansList() {
   const [status, setStatus] = useState(params.get('status') ?? '');
   const [category, setCategory] = useState(params.get('category') ?? '');
   const [overdue, setOverdue] = useState(params.get('overdueOnly') === 'true');
+  const collector = params.get('collector') ?? undefined;
   const [q, setQ] = useState('');
   const term = useDebounced(q.trim(), 300);
   const [rows, setRows] = useState<Row[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const filters = { status, category, q: term, overdueOnly: overdue || undefined, limit: 50 };
+  const filters = { status, category, q: term, overdueOnly: overdue || undefined, collector, limit: 50 };
 
   useEffect(() => {
     const ctrl = new AbortController();

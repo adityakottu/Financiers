@@ -3,8 +3,8 @@
 Lending, collections, accounting and daily reconciliation system for an
 asset-backed lending business in India.
 
-**Current phase:** Phase 6 — Daily reconciliation ✅ (see [Phase 6 report](docs/phase-6-report.md);
-earlier: [Phase 5](docs/phase-5-report.md), [Phase 4](docs/phase-4-report.md), [Phase 3](docs/phase-3-report.md), [Phase 2](docs/phase-2-report.md)).
+**Current phase:** Phase 7 — Reports, dashboards & recovery ✅ (see [Phase 7 report](docs/phase-7-report.md);
+earlier: [Phase 6](docs/phase-6-report.md), [Phase 5](docs/phase-5-report.md), [Phase 4](docs/phase-4-report.md), [Phase 3](docs/phase-3-report.md), [Phase 2](docs/phase-2-report.md)).
 Architecture and specifications: [docs/README.md](docs/README.md).
 
 ## Repository layout
@@ -17,6 +17,13 @@ packages/money    Decimal Money type and Indian number formatting
 packages/contracts Permission catalogue, roles, Zod schemas shared by API and web
 docs/             Architecture pack (Phase 1) and phase reports
 ```
+
+## Try it
+
+The quickest way to open the app is **GitHub Codespaces** (Code → Codespaces → Create), then
+`pnpm demo`. Step-by-step instructions for Codespaces, VS Code and sharing through Cloudflare:
+[docs/run-and-verify.md](docs/run-and-verify.md). On your own machine, `pnpm setup` then `pnpm demo`
+does everything below automatically.
 
 ## Running locally
 

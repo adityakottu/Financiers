@@ -1,7 +1,8 @@
-import { Controller, Get, Inject } from '@nestjs/common';
+import { Controller, Get, Inject, Param, ParseUUIDPipe } from '@nestjs/common';
 import { sql } from 'kysely';
 import { scope } from '../auth/access.service';
-import { Authenticated, Ctx, RequestContext } from '../auth/context';
+import { Authenticated, Ctx, RequestContext, Require } from '../auth/context';
+import { DashboardService } from './dashboard.service';
 import { DB_TOKEN, Db } from '../db/db';
 import { istToday } from '../common/dates';
 
@@ -13,7 +14,28 @@ const NONE = '00000000-0000-0000-0000-000000000000';
  */
 @Controller('dashboard')
 export class DashboardController {
-  constructor(@Inject(DB_TOKEN) private readonly db: Db) {}
+  constructor(
+    @Inject(DB_TOKEN) private readonly db: Db,
+    private readonly dashboards: DashboardService,
+  ) {}
+
+  @Require('dashboard.company')
+  @Get('company')
+  company(@Ctx() ctx: RequestContext) {
+    return this.dashboards.company(ctx.auth);
+  }
+
+  @Require('dashboard.branch')
+  @Get('branch/:id')
+  branch(@Ctx() ctx: RequestContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.dashboards.branch(ctx.auth, id);
+  }
+
+  @Require('dashboard.collector')
+  @Get('collector/:employeeId')
+  collector(@Ctx() ctx: RequestContext, @Param('employeeId', ParseUUIDPipe) id: string) {
+    return this.dashboards.collector(ctx.auth, id);
+  }
 
   @Authenticated()
   @Get('summary')

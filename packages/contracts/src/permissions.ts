@@ -74,6 +74,22 @@ export const PERMISSIONS = {
   'day.close': 'Close a branch business day; ask for a reopen',
   'day.reopen': 'Approve reopening a closed business day (not your own request)',
 
+  // Recovery
+  'recovery.view': 'See recovery cases, stages and actions',
+  'recovery.note': 'Add notes, calls and visits to recovery cases',
+  'recovery.manage': 'Open and close recovery cases, move stages, request repossession and sale',
+  'recovery.approve': 'Approve stage moves that need approval, repossession and asset sale (not your own requests)',
+  'recovery.configure': 'Edit recovery stage definitions',
+  'loan.write_off_request': 'Ask for a loan to be written off',
+  'loan.write_off': 'Approve a loan write-off (not your own request)',
+
+  // Reports & exports
+  'report.loan': 'Loan reports',
+  'report.collection': 'Collection reports (collectors: their own)',
+  'report.accounting': 'Accounting reports and the CA pack',
+  'report.reconciliation': 'Reconciliation reports',
+  'export.data': 'Download reports as Excel / PDF (audited)',
+
   // System
   'jobs.run': 'Run end-of-day jobs manually',
 
@@ -123,6 +139,16 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'ALL',
     mfaRequired: true,
     permissions: [
+      'recovery.view',
+      'recovery.note',
+      'recovery.manage',
+      'recovery.approve',
+      'loan.write_off',
+      'report.loan',
+      'report.collection',
+      'report.accounting',
+      'report.reconciliation',
+      'export.data',
       'recon.view',
       'difference.approve',
       'difference.approve_high',
@@ -159,6 +185,15 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'BRANCH',
     mfaRequired: false,
     permissions: [
+      'recovery.view',
+      'recovery.note',
+      'recovery.manage',
+      'loan.write_off_request',
+      'report.loan',
+      'report.collection',
+      'report.accounting',
+      'report.reconciliation',
+      'export.data',
       'recon.view',
       'settlement.submit',
       'settlement.verify',
@@ -206,6 +241,12 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'BRANCH',
     mfaRequired: true,
     permissions: [
+      'recovery.view',
+      'report.loan',
+      'report.collection',
+      'report.accounting',
+      'report.reconciliation',
+      'export.data',
       'recon.view',
       'settlement.verify',
       'statement.import',
@@ -246,6 +287,9 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'ASSIGNED',
     mfaRequired: false,
     permissions: [
+      'recovery.view',
+      'recovery.note',
+      'report.collection',
       'settlement.submit',
       'expense.submit',
       'payment.collect',

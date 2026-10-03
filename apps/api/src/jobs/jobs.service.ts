@@ -13,6 +13,7 @@ import { GL, LedgerService } from '../ledger/ledger.service';
 import { accrueInterest, rollStatuses } from '../lending/dues';
 import { LoansService } from '../lending/loans.service';
 import { MessagingService } from '../messaging/messaging.service';
+import { RecoveryService } from '../recovery/recovery.service';
 
 const JOB = 'daily.close';
 const LOCK_KEY = 7314100;
@@ -28,6 +29,7 @@ export interface DailyResult {
   advancesApplied?: number;
   promisesResolved?: number;
   remindersQueued?: number;
+  recoveryCasesOpened?: number;
 }
 
 /**
@@ -38,6 +40,7 @@ export interface DailyResult {
  *   4. customer advances applied to installments that fell due
  *   5. loan balance refresh
  *   6. promises to pay resolved (kept / partial / broken)
+ *   7. recovery cases opened for loans past the configured days past due
  *   7. due and overdue reminders queued (sent from 09:00 IST)
  * One transaction per date, guarded by an advisory lock, and recorded in job_runs, so running it
  * twice (two API instances, a retry, a manual run) never double-posts.
@@ -58,6 +61,7 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
     private readonly payments: PaymentsService,
     private readonly collections: CollectionsService,
     private readonly messaging: MessagingService,
+    private readonly recovery: RecoveryService,
   ) {}
 
   onApplicationBootstrap() {
@@ -108,6 +112,7 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
       await this.loans.refreshBalances(tx, 'ALL_ACTIVE', date);
       const promisesResolved = await this.collections.resolvePromises(tx, date);
       const remindersQueued = await this.messaging.queueReminders(tx, date);
+      const recoveryCasesOpened = await this.recovery.autoOpen(tx, date);
       const result: DailyResult = {
         date,
         statusesUpdated,
@@ -118,6 +123,7 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
         advancesApplied,
         promisesResolved,
         remindersQueued,
+        recoveryCasesOpened,
       };
       await tx
         .insertInto('job_runs')

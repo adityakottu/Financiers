@@ -90,6 +90,22 @@ export interface AssetEvents {
   to_status: string;
 }
 
+export interface AssetRepossessions {
+  asset_id: string;
+  case_id: string | null;
+  condition_notes: string;
+  id: Generated<string>;
+  loan_id: string;
+  location: string;
+  recorded_at: Generated<Timestamp>;
+  recorded_by: string;
+  release_reason: string | null;
+  released_by: string | null;
+  released_on: string | null;
+  repossessed_on: string;
+  valuation: Numeric | null;
+}
+
 export interface Assets {
   asset_no: string;
   asset_value: Numeric | null;
@@ -129,6 +145,29 @@ export interface Assets {
   variant: string | null;
   vehicle_type: string | null;
   version: Generated<number>;
+}
+
+export interface AssetSales {
+  account_id: string;
+  applied_amount: Numeric | null;
+  asset_id: string;
+  buyer_name: string;
+  buyer_reference: string | null;
+  case_id: string | null;
+  decided_at: Timestamp | null;
+  decided_by: string | null;
+  decision_note: string | null;
+  id: Generated<string>;
+  journal_entry_id: string | null;
+  loan_id: string;
+  notes: string | null;
+  requested_at: Generated<Timestamp>;
+  requested_by: string;
+  sale_no: string;
+  sale_price: Numeric;
+  sold_on: string;
+  status: Generated<string>;
+  surplus_amount: Numeric | null;
 }
 
 export interface AuditLogs {
@@ -294,6 +333,7 @@ export interface Companies {
   logo_file_id: string | null;
   phone: string | null;
   receipt_footer: string | null;
+  recovery_auto_open_dpd: Generated<number>;
   timezone: Generated<string>;
   trade_name: string | null;
   updated_at: Generated<Timestamp>;
@@ -462,6 +502,23 @@ export interface Expenses {
   submitted_at: Generated<Timestamp>;
   submitted_by: string;
   vendor: string | null;
+}
+
+export interface ExportJobs {
+  content: Buffer | null;
+  error: string | null;
+  expires_at: Generated<Timestamp>;
+  file_name: string | null;
+  filters: Json;
+  finished_at: Timestamp | null;
+  format: string;
+  id: Generated<string>;
+  report: string;
+  requested_at: Generated<Timestamp>;
+  requested_by: string;
+  row_count: number | null;
+  started_at: Timestamp | null;
+  status: Generated<string>;
 }
 
 export interface Files {
@@ -683,6 +740,28 @@ export interface Loans {
   total_payable: Numeric;
   updated_at: Generated<Timestamp>;
   version: Generated<number>;
+  written_off_at: Timestamp | null;
+}
+
+export interface LoanWriteOffs {
+  advance_used: Numeric | null;
+  amount: Numeric | null;
+  case_id: string | null;
+  decided_at: Timestamp | null;
+  decided_by: string | null;
+  decision_note: string | null;
+  fees: Numeric | null;
+  id: Generated<string>;
+  interest: Numeric | null;
+  journal_entry_id: string | null;
+  loan_id: string;
+  penalty: Numeric | null;
+  principal: Numeric | null;
+  reason: string;
+  requested_at: Generated<Timestamp>;
+  requested_by: string;
+  status: Generated<string>;
+  written_off_on: string | null;
 }
 
 export interface LoginEvents {
@@ -853,6 +932,7 @@ export interface Payments {
   customer_id: string;
   debit_account_id: string;
   id: Generated<string>;
+  is_post_write_off: Generated<boolean>;
   journal_entry_id: string | null;
   lat: Numeric | null;
   lng: Numeric | null;
@@ -921,6 +1001,51 @@ export interface ReconciliationMatches {
   undone_by: string | null;
 }
 
+export interface RecoveryActions {
+  action_type: string;
+  actor_id: string | null;
+  at: Generated<Timestamp>;
+  case_id: string;
+  details: Generated<Json>;
+  id: Generated<string>;
+  summary: string;
+}
+
+export interface RecoveryCases {
+  branch_id: string;
+  case_no: string;
+  close_reason: string | null;
+  closed_at: Timestamp | null;
+  closed_by: string | null;
+  dpd_at_open: number;
+  id: Generated<string>;
+  loan_id: string;
+  opened_at: Generated<Timestamp>;
+  opened_by: string | null;
+  overdue_at_open: Numeric;
+  owner_employee_id: string | null;
+  request_note: string | null;
+  requested_at: Timestamp | null;
+  requested_by: string | null;
+  requested_stage: string | null;
+  stage: string;
+  status: Generated<string>;
+  version: Generated<number>;
+}
+
+export interface RecoveryStageDefinitions {
+  active: Generated<boolean>;
+  allowed_next: Generated<string[]>;
+  code: string;
+  description: string | null;
+  is_terminal: Generated<boolean>;
+  name: string;
+  requires_approval: Generated<boolean>;
+  sort_order: number;
+  updated_at: Generated<Timestamp>;
+  updated_by: string | null;
+}
+
 export interface ReminderRules {
   channel: string;
   event_code: string;
@@ -930,6 +1055,13 @@ export interface ReminderRules {
   offset_days: number;
   updated_at: Generated<Timestamp>;
   updated_by: string | null;
+}
+
+export interface ReportPreferences {
+  filters: Json;
+  report: string;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
 }
 
 export interface RolePermissions {
@@ -1033,6 +1165,8 @@ export interface DB {
   advance_applications: AdvanceApplications;
   asset_documents: AssetDocuments;
   asset_events: AssetEvents;
+  asset_repossessions: AssetRepossessions;
+  asset_sales: AssetSales;
   assets: Assets;
   audit_logs: AuditLogs;
   bank_accounts: BankAccounts;
@@ -1053,6 +1187,7 @@ export interface DB {
   employees: Employees;
   expense_categories: ExpenseCategories;
   expenses: Expenses;
+  export_jobs: ExportJobs;
   files: Files;
   idempotency_keys: IdempotencyKeys;
   job_runs: JobRuns;
@@ -1062,6 +1197,7 @@ export interface DB {
   loan_closures: LoanClosures;
   loan_installments: LoanInstallments;
   loan_products: LoanProducts;
+  loan_write_offs: LoanWriteOffs;
   loans: Loans;
   login_events: LoginEvents;
   manual_journals: ManualJournals;
@@ -1080,7 +1216,11 @@ export interface DB {
   promises_to_pay: PromisesToPay;
   receipts: Receipts;
   reconciliation_matches: ReconciliationMatches;
+  recovery_actions: RecoveryActions;
+  recovery_cases: RecoveryCases;
+  recovery_stage_definitions: RecoveryStageDefinitions;
   reminder_rules: ReminderRules;
+  report_preferences: ReportPreferences;
   role_permissions: RolePermissions;
   roles: Roles;
   sessions: Sessions;

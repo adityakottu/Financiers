@@ -28,6 +28,27 @@ const envSchema = z.object({
   SESSION_ABSOLUTE_HOURS: z.coerce.number().int().min(1).default(12),
   FILE_STORAGE_DIR: z.string().default('./storage'),
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
+  /** Public URL of the web app, printed on receipts (QR code for verification). */
+  PUBLIC_WEB_URL: z.string().url().optional(),
+  /** SMS: 'msg91' (DLT-registered templates) or 'log' (nothing is sent; messages are marked SIMULATED). */
+  SMS_PROVIDER: z.enum(['log', 'msg91']).default('log'),
+  MSG91_AUTH_KEY: z.string().optional(),
+  MSG91_SENDER_ID: z.string().regex(/^[A-Z]{6}$/).optional(),
+  /** Shared secret MSG91 must send (?token=) on delivery-report webhooks. */
+  MSG91_WEBHOOK_TOKEN: z.string().min(24).optional(),
+  /** WhatsApp: 'meta' (official WhatsApp Business Cloud API) or 'log'. Unofficial automation is never supported. */
+  WHATSAPP_PROVIDER: z.enum(['log', 'meta']).default('log'),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().regex(/^\d+$/).optional(),
+  WHATSAPP_ACCESS_TOKEN: z.string().optional(),
+  /** Meta app secret: verifies X-Hub-Signature-256 on webhooks. */
+  WHATSAPP_APP_SECRET: z.string().optional(),
+  WHATSAPP_VERIFY_TOKEN: z.string().min(16).optional(),
+  WHATSAPP_API_VERSION: z.string().regex(/^v\d+\.\d+$/).default('v21.0'),
+  /** Background workers (message relay, nightly job). Off in tests, which drive them directly. */
+  WORKERS: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
 });
 
 export type AppConfig = ReturnType<typeof loadConfig>;
@@ -45,6 +66,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   const production = c.NODE_ENV === 'production';
   if (production && !c.ENFORCE_MFA) throw new Error('ENFORCE_MFA cannot be disabled in production');
   const cookieSecure = c.COOKIE_SECURE ?? production;
+  if (c.SMS_PROVIDER === 'msg91' && !(c.MSG91_AUTH_KEY && c.MSG91_SENDER_ID)) {
+    throw new Error('SMS_PROVIDER=msg91 needs MSG91_AUTH_KEY and MSG91_SENDER_ID');
+  }
+  if (c.WHATSAPP_PROVIDER === 'meta' && !(c.WHATSAPP_PHONE_NUMBER_ID && c.WHATSAPP_ACCESS_TOKEN && c.WHATSAPP_APP_SECRET)) {
+    throw new Error('WHATSAPP_PROVIDER=meta needs WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ACCESS_TOKEN and WHATSAPP_APP_SECRET');
+  }
   return {
     env: c.NODE_ENV,
     production,
@@ -63,6 +90,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     sessionAbsoluteMs: c.SESSION_ABSOLUTE_HOURS * 3_600_000,
     fileStorageDir: c.FILE_STORAGE_DIR,
     trustProxy: c.TRUST_PROXY,
+    publicWebUrl: (c.PUBLIC_WEB_URL ?? c.APP_ORIGIN.split(',')[0]!.trim()).replace(/\/$/, ''),
+    workers: c.WORKERS ?? c.NODE_ENV !== 'test',
+    sms: { provider: c.SMS_PROVIDER, authKey: c.MSG91_AUTH_KEY ?? null, senderId: c.MSG91_SENDER_ID ?? null, webhookToken: c.MSG91_WEBHOOK_TOKEN ?? null },
+    whatsapp: {
+      provider: c.WHATSAPP_PROVIDER,
+      phoneNumberId: c.WHATSAPP_PHONE_NUMBER_ID ?? null,
+      accessToken: c.WHATSAPP_ACCESS_TOKEN ?? null,
+      appSecret: c.WHATSAPP_APP_SECRET ?? null,
+      verifyToken: c.WHATSAPP_VERIFY_TOKEN ?? null,
+      apiVersion: c.WHATSAPP_API_VERSION,
+    },
   };
 }
 

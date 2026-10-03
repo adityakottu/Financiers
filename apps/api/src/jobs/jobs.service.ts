@@ -7,8 +7,12 @@ import { istMinutesSinceMidnight, istToday } from '../common/dates';
 import { unprocessable } from '../common/errors';
 import { AppConfig, CONFIG } from '../config/config';
 import { DB_TOKEN, Db, Tx } from '../db/db';
+import { CollectionsService } from '../collections/collections.service';
+import { PaymentsService } from '../collections/payments.service';
 import { GL, LedgerService } from '../ledger/ledger.service';
+import { accrueInterest, rollStatuses } from '../lending/dues';
 import { LoansService } from '../lending/loans.service';
+import { MessagingService } from '../messaging/messaging.service';
 
 const JOB = 'daily.close';
 const LOCK_KEY = 7314100;
@@ -21,6 +25,9 @@ export interface DailyResult {
   accrualEntries: number;
   penaltiesAssessed: number;
   penaltyAmount: string;
+  advancesApplied?: number;
+  promisesResolved?: number;
+  remindersQueued?: number;
 }
 
 /**
@@ -28,7 +35,10 @@ export interface DailyResult {
  *   1. installment status roll (upcoming / due today / overdue, days overdue)
  *   2. interest accrual on installments falling due (E2: Dr Interest Receivable / Cr Interest Income)
  *   3. penal charges past grace (E3: Dr Penal Receivable / Cr Penal Income)
- *   4. loan balance refresh
+ *   4. customer advances applied to installments that fell due
+ *   5. loan balance refresh
+ *   6. promises to pay resolved (kept / partial / broken)
+ *   7. due and overdue reminders queued (sent from 09:00 IST)
  * One transaction per date, guarded by an advisory lock, and recorded in job_runs, so running it
  * twice (two API instances, a retry, a manual run) never double-posts.
  */
@@ -45,10 +55,13 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
     private readonly ledger: LedgerService,
     private readonly loans: LoansService,
     private readonly audit: AuditService,
+    private readonly payments: PaymentsService,
+    private readonly collections: CollectionsService,
+    private readonly messaging: MessagingService,
   ) {}
 
   onApplicationBootstrap() {
-    if (this.config.env === 'test') return;
+    if (!this.config.workers) return;
     // Check every 10 minutes; after 00:05 IST, run any business dates not yet processed.
     const tick = () => {
       if (!this.stopped) void this.catchUp().catch((e) => this.log.error(e));
@@ -87,11 +100,14 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
       if (done?.status === 'DONE') {
         return { date, skipped: true, statusesUpdated: 0, interestAccrued: 0, accrualEntries: 0, penaltiesAssessed: 0, penaltyAmount: '0.00' };
       }
-      const statusesUpdated = await this.rollStatuses(tx, date);
-      const accrual = await this.accrueInterest(tx, date);
+      const statusesUpdated = await rollStatuses(tx, date);
+      const accrual = await accrueInterest(tx, this.ledger, date);
       const penalty = await this.assessPenalties(tx, date);
-      await this.rollStatuses(tx, date); // penalties change balances
+      const advancesApplied = await this.payments.applyAdvancesDue(tx, date);
+      await rollStatuses(tx, date); // penalties and advances change balances
       await this.loans.refreshBalances(tx, 'ALL_ACTIVE', date);
+      const promisesResolved = await this.collections.resolvePromises(tx, date);
+      const remindersQueued = await this.messaging.queueReminders(tx, date);
       const result: DailyResult = {
         date,
         statusesUpdated,
@@ -99,6 +115,9 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
         accrualEntries: accrual.entries,
         penaltiesAssessed: penalty.count,
         penaltyAmount: penalty.amount.toString(),
+        advancesApplied,
+        promisesResolved,
+        remindersQueued,
       };
       await tx
         .insertInto('job_runs')
@@ -108,62 +127,6 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
       await this.audit.recordAs(tx, actor, { action: 'jobs.daily_close', entityType: 'job', entityId: date, newValues: result as unknown as Record<string, unknown> });
       return result;
     });
-  }
-
-  /** Status of every open installment of active loans as of `date`. */
-  private async rollStatuses(tx: Tx, date: string): Promise<number> {
-    const r = await sql`
-      UPDATE loan_installments i SET
-        status = CASE
-          WHEN i.total_paid >= i.total_due THEN 'PAID'
-          WHEN i.due_date < ${date}::date THEN 'OVERDUE'
-          WHEN i.total_paid > 0 THEN 'PARTIALLY_PAID'
-          WHEN i.due_date = ${date}::date THEN 'DUE_TODAY'
-          ELSE 'UPCOMING' END,
-        days_overdue = CASE WHEN i.due_date < ${date}::date AND i.total_paid < i.total_due THEN ${date}::date - i.due_date ELSE 0 END
-      FROM loans l
-      WHERE l.id = i.loan_id AND l.status = 'ACTIVE' AND i.status NOT IN ('PAID', 'WAIVED', 'RESCHEDULED')`.execute(tx);
-    return Number(r.numAffectedRows ?? 0);
-  }
-
-  /** E2 — accrual on due date (decision D1). One entry per loan per run, a line pair per installment. */
-  private async accrueInterest(tx: Tx, date: string) {
-    const due = await tx
-      .selectFrom('loan_installments as i')
-      .innerJoin('loans as l', 'l.id', 'i.loan_id')
-      .select(['i.id', 'i.loan_id', 'i.installment_no', 'i.interest_due', 'i.due_date', 'l.loan_no', 'l.branch_id', 'l.customer_id'])
-      .where('l.status', '=', 'ACTIVE')
-      .where('i.status', '<>', 'RESCHEDULED')
-      .where('i.interest_accrued_at', 'is', null)
-      .where('i.due_date', '<=', date)
-      .orderBy('i.loan_id')
-      .orderBy('i.installment_no')
-      .execute();
-    const byLoan = new Map<string, typeof due>();
-    for (const i of due) byLoan.set(i.loan_id, [...(byLoan.get(i.loan_id) ?? []), i]);
-    let entries = 0;
-    for (const [loanId, items] of byLoan) {
-      const withInterest = items.filter((i) => Money.of(i.interest_due).isPositive());
-      if (withInterest.length) {
-        const first = items[0]!;
-        await this.ledger.post(tx, {
-          entryType: 'ACCRUAL',
-          valueDate: date,
-          branchId: first.branch_id,
-          sourceType: 'loan',
-          sourceId: loanId,
-          narration: `Interest due on loan ${first.loan_no} (installment ${withInterest.map((i) => i.installment_no).join(', ')})`,
-          lines: withInterest.flatMap((i) => [
-            { account: GL.INTEREST_RECEIVABLE, debit: Money.of(i.interest_due), loanId, customerId: first.customer_id, memo: `Installment ${i.installment_no} due ${i.due_date}` },
-            { account: GL.INTEREST_INCOME, credit: Money.of(i.interest_due), loanId, memo: `Installment ${i.installment_no}` },
-          ]),
-          createdBy: null,
-        });
-        entries++;
-      }
-      await tx.updateTable('loan_installments').set({ interest_accrued_at: new Date() }).where('id', 'in', items.map((i) => i.id)).execute();
-    }
-    return { installments: due.length, entries };
   }
 
   /** E3 — penal charges per the loan's frozen penalty rule. At most one assessment per installment per day. */

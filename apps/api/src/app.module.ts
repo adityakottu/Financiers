@@ -31,6 +31,11 @@ import { AssetsController, LoansController, ProductsController } from './lending
 import { LoansService } from './lending/loans.service';
 import { JobsController } from './jobs/jobs.controller';
 import { JobsService } from './jobs/jobs.service';
+import { CollectionsController, LoanCollectionsController, PaymentsController, PublicReceiptsController, ReversalsController } from './collections/collections.controller';
+import { CollectionsService } from './collections/collections.service';
+import { PaymentsService } from './collections/payments.service';
+import { MessagesController, ReminderRulesController, TemplatesController, WebhooksController } from './messaging/messaging.controller';
+import { MessagingService } from './messaging/messaging.service';
 
 @Controller('health')
 class HealthController {
@@ -81,6 +86,15 @@ export class AppModule implements NestModule {
         AssetsController,
         AccountsController,
         JobsController,
+        LoanCollectionsController,
+        PaymentsController,
+        ReversalsController,
+        CollectionsController,
+        PublicReceiptsController,
+        MessagesController,
+        TemplatesController,
+        ReminderRulesController,
+        WebhooksController,
       ],
       providers: [
         { provide: CONFIG, useValue: config },
@@ -98,6 +112,9 @@ export class AppModule implements NestModule {
         LedgerService,
         LoansService,
         JobsService,
+        MessagingService,
+        PaymentsService,
+        CollectionsService,
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_GUARD, useClass: AuthGuard },
       ],

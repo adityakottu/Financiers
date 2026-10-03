@@ -37,6 +37,17 @@ export const PERMISSIONS = {
   'asset.edit': 'Edit financed asset details and documents',
   'statement.generate': 'Download loan statements',
 
+  // Collections & payments
+  'payment.collect': 'Record payments and issue receipts',
+  'payment.view': 'View payments and receipts',
+  'payment.reverse_request': 'Ask for a payment to be reversed',
+  'payment.reverse_approve': 'Approve or reject payment reversals (not your own requests)',
+  'collection.assign': 'Assign loans to collectors',
+  'collection.view_team': 'See collections of all collectors in scope',
+  'message.send': 'Send SMS / WhatsApp messages to customers',
+  'message.view': 'View message logs',
+  'message.configure': 'Edit message templates and reminder rules',
+
   // Accounting
   'ledger.view': 'View chart of accounts, journals and ledgers',
   'coa.manage': 'Add bank and cash accounts',
@@ -90,6 +101,10 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'ALL',
     mfaRequired: true,
     permissions: [
+      'payment.view',
+      'payment.reverse_approve',
+      'collection.view_team',
+      'message.view',
       'loan.view',
       'loan.approve',
       'loan.approve_high',
@@ -113,6 +128,14 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'BRANCH',
     mfaRequired: false,
     permissions: [
+      'payment.collect',
+      'payment.view',
+      'payment.reverse_request',
+      'payment.reverse_approve',
+      'collection.assign',
+      'collection.view_team',
+      'message.send',
+      'message.view',
       'loan.view',
       'loan.create',
       'loan.approve',
@@ -142,6 +165,12 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'BRANCH',
     mfaRequired: true,
     permissions: [
+      'payment.collect',
+      'payment.view',
+      'payment.reverse_request',
+      'payment.reverse_approve',
+      'collection.view_team',
+      'message.view',
       'loan.view',
       'loan.disburse',
       'statement.generate',
@@ -163,6 +192,10 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'ASSIGNED',
     mfaRequired: false,
     permissions: [
+      'payment.collect',
+      'payment.view',
+      'payment.reverse_request',
+      'message.send',
       'loan.view',
       'customer.view',
       'customer.view_contact',

@@ -20,6 +20,7 @@ import { istToday } from '../common/dates';
 import { badRequest, conflict, forbidden, notFound, unprocessable } from '../common/errors';
 import { DB_TOKEN, Db, Executor, Tx, isUniqueViolation, pgConstraint } from '../db/db';
 import { GL, LedgerService } from '../ledger/ledger.service';
+import { fmtAmount, fmtDate, MessagingService } from '../messaging/messaging.service';
 import { NumberingService } from '../numbering/numbering.service';
 
 type ProductInput = z.infer<typeof productSchema>;
@@ -51,6 +52,7 @@ export class LoansService {
     private readonly numbering: NumberingService,
     private readonly ledger: LedgerService,
     private readonly audit: AuditService,
+    private readonly messaging: MessagingService,
   ) {}
 
   /* =========================== Products =========================== */
@@ -583,6 +585,17 @@ export class LoansService {
       branchId: loan.branch_id,
       oldValues: { status: 'APPROVED' },
       newValues: { status: 'ACTIVE', disbursedOn: d.disbursedOn, account: account.code, mode: d.mode, reference: d.reference ?? null, netPaid: loan.net_disbursement, journal: entry.entryNo },
+    });
+    const customer = await tx.selectFrom('customers').select('full_name').where('id', '=', loan.customer_id).executeTakeFirstOrThrow();
+    const first = await tx.selectFrom('loan_installments').select(['total_due', 'due_date']).where('loan_id', '=', id).where('installment_no', '=', 1).executeTakeFirstOrThrow();
+    await this.messaging.notify(tx, {
+      eventCode: 'LOAN_DISBURSED',
+      customerId: loan.customer_id,
+      loanId: id,
+      vars: { name: customer.full_name, loan_no: loan.loan_no, amount: fmtAmount(loan.principal), installment: fmtAmount(first.total_due ?? '0'), due_date: fmtDate(first.due_date) },
+      triggeredBy: 'AUTO',
+      createdBy: ctx.auth.userId,
+      dedupeKey: `DISB:${id}`,
     });
     return { id, status: 'ACTIVE', journalEntryNo: entry.entryNo };
   }

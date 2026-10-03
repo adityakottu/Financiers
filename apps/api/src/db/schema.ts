@@ -53,6 +53,18 @@ export interface Accounts {
   type: string;
 }
 
+export interface AdvanceApplications {
+  amount: Numeric;
+  applied_on: string;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  journal_entry_id: string | null;
+  loan_id: string;
+  reversal_journal_entry_id: string | null;
+  reversed_at: Timestamp | null;
+  status: Generated<string>;
+}
+
 export interface AssetDocuments {
   asset_id: string;
   created_at: Generated<Timestamp>;
@@ -161,6 +173,31 @@ export interface Branches {
   updated_at: Generated<Timestamp>;
   updated_by: string | null;
   version: Generated<number>;
+}
+
+export interface CollectionAssignments {
+  assigned_by: string;
+  employee_id: string;
+  from_at: Generated<Timestamp>;
+  id: Generated<string>;
+  loan_id: string;
+  reason: string | null;
+  to_at: Timestamp | null;
+}
+
+export interface CollectionVisits {
+  created_by: string;
+  customer_id: string;
+  employee_id: string | null;
+  id: Generated<string>;
+  lat: Numeric | null;
+  lng: Numeric | null;
+  loan_id: string;
+  notes: string | null;
+  outcome: string;
+  payment_id: string | null;
+  promise_id: string | null;
+  visited_at: Generated<Timestamp>;
 }
 
 export interface Companies {
@@ -362,6 +399,24 @@ export interface LoanCharges {
   status: Generated<string>;
 }
 
+export interface LoanClosures {
+  advance_remaining: Generated<Numeric>;
+  checklist: Generated<Json>;
+  closed_on: string;
+  closing_payment_id: string | null;
+  created_at: Generated<Timestamp>;
+  fees_paid: Numeric;
+  id: Generated<string>;
+  interest_paid: Numeric;
+  loan_id: string;
+  penalty_paid: Numeric;
+  principal_paid: Numeric;
+  status: Generated<string>;
+  total_paid: Numeric;
+  void_reason: string | null;
+  voided_at: Timestamp | null;
+}
+
 export interface LoanInstallments {
   closing_principal: Numeric;
   days_overdue: Generated<number>;
@@ -417,6 +472,7 @@ export interface LoanProducts {
 }
 
 export interface Loans {
+  advance_balance: Generated<Numeric>;
   allocation_rule: Json;
   annual_rate: Numeric;
   approved_at: Timestamp | null;
@@ -457,6 +513,7 @@ export interface Loans {
   installment_amount: Numeric;
   interest_method: string;
   interest_outstanding: Generated<Numeric>;
+  last_payment_at: Timestamp | null;
   loan_no: string;
   maturity_date: string;
   net_disbursement: Numeric;
@@ -476,6 +533,7 @@ export interface Loans {
   status: Generated<string>;
   submitted_at: Timestamp | null;
   submitted_by: string | null;
+  total_collected: Generated<Numeric>;
   total_fees: Numeric;
   total_gst: Numeric;
   total_interest: Numeric;
@@ -493,6 +551,59 @@ export interface LoginEvents {
   success: boolean;
   user_agent: string | null;
   user_id: string | null;
+}
+
+export interface MessageEvents {
+  at: Generated<Timestamp>;
+  detail: Generated<Json>;
+  id: Generated<Int8>;
+  message_id: string | null;
+  source: string;
+  status: string | null;
+}
+
+export interface Messages {
+  attempts: Generated<number>;
+  available_at: Generated<Timestamp>;
+  body: string;
+  channel: string;
+  created_by: string | null;
+  customer_id: string | null;
+  dedupe_key: string | null;
+  delivered_at: Timestamp | null;
+  error_text: string | null;
+  event_code: string;
+  failed_at: Timestamp | null;
+  id: Generated<string>;
+  installment_id: string | null;
+  loan_id: string | null;
+  params: Generated<Json>;
+  payment_id: string | null;
+  provider: string | null;
+  provider_message_id: string | null;
+  queued_at: Generated<Timestamp>;
+  read_at: Timestamp | null;
+  sent_at: Timestamp | null;
+  skip_reason: string | null;
+  status: Generated<string>;
+  template_id: string | null;
+  to_number: string;
+  triggered_by: Generated<string>;
+}
+
+export interface MessageTemplates {
+  body: string;
+  channel: string;
+  dlt_template_id: string | null;
+  event_code: string;
+  id: Generated<string>;
+  is_active: Generated<boolean>;
+  language: Generated<string>;
+  updated_at: Generated<Timestamp>;
+  updated_by: string | null;
+  variables: string[];
+  wa_language: Generated<string>;
+  wa_template_name: string | null;
 }
 
 export interface MfaRecoveryCodes {
@@ -537,9 +648,104 @@ export interface PasswordResetTokens {
   user_id: string;
 }
 
+export interface PaymentAllocations {
+  advance_application_id: string | null;
+  amount: Numeric;
+  component: string;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  installment_id: string | null;
+  installment_no: number | null;
+  loan_id: string;
+  payment_id: string | null;
+  rule_snapshot: Json;
+  seq: number;
+}
+
+export interface PaymentReversals {
+  decided_at: Timestamp | null;
+  decided_by: string | null;
+  decision_note: string | null;
+  id: Generated<string>;
+  payment_id: string;
+  reason_code: string;
+  reason_text: string;
+  requested_at: Generated<Timestamp>;
+  requested_by: string;
+  reversal_journal_entry_id: string | null;
+  status: Generated<string>;
+}
+
+export interface Payments {
+  advance_amount: Generated<Numeric>;
+  amount: Numeric;
+  branch_id: string;
+  business_date: string;
+  cheque_bank: string | null;
+  cheque_date: string | null;
+  cheque_status: string | null;
+  collected_by: string | null;
+  created_at: Generated<Timestamp>;
+  customer_id: string;
+  debit_account_id: string;
+  id: Generated<string>;
+  journal_entry_id: string | null;
+  lat: Numeric | null;
+  lng: Numeric | null;
+  loan_id: string;
+  location_text: string | null;
+  method: string;
+  notes: string | null;
+  payment_no: string;
+  received_at: Generated<Timestamp>;
+  reconciliation_status: Generated<string>;
+  recorded_by: string;
+  reference_no: string | null;
+  settlement_id: string | null;
+  status: Generated<string>;
+  value_date: string;
+}
+
 export interface Permissions {
   code: string;
   description: string;
+}
+
+export interface PromisesToPay {
+  created_at: Generated<Timestamp>;
+  created_by: string;
+  customer_id: string;
+  employee_id: string | null;
+  id: Generated<string>;
+  loan_id: string;
+  paid_amount: Generated<Numeric>;
+  promised_amount: Numeric;
+  promised_date: string;
+  resolved_at: Timestamp | null;
+  status: Generated<string>;
+}
+
+export interface Receipts {
+  cancelled_at: Timestamp | null;
+  cancelled_by_reversal_id: string | null;
+  id: Generated<string>;
+  issued_at: Generated<Timestamp>;
+  payment_id: string;
+  receipt_no: string;
+  snapshot: Json;
+  status: Generated<string>;
+  verify_token: string;
+}
+
+export interface ReminderRules {
+  channel: string;
+  event_code: string;
+  id: Generated<string>;
+  is_active: Generated<boolean>;
+  min_amount: Generated<Numeric>;
+  offset_days: number;
+  updated_at: Generated<Timestamp>;
+  updated_by: string | null;
 }
 
 export interface RolePermissions {
@@ -623,12 +829,15 @@ export interface Users {
 export interface DB {
   accounting_periods: AccountingPeriods;
   accounts: Accounts;
+  advance_applications: AdvanceApplications;
   asset_documents: AssetDocuments;
   asset_events: AssetEvents;
   assets: Assets;
   audit_logs: AuditLogs;
   bank_accounts: BankAccounts;
   branches: Branches;
+  collection_assignments: CollectionAssignments;
+  collection_visits: CollectionVisits;
   companies: Companies;
   customer_documents: CustomerDocuments;
   customer_events: CustomerEvents;
@@ -642,16 +851,26 @@ export interface DB {
   journal_entries: JournalEntries;
   journal_lines: JournalLines;
   loan_charges: LoanCharges;
+  loan_closures: LoanClosures;
   loan_installments: LoanInstallments;
   loan_products: LoanProducts;
   loans: Loans;
   login_events: LoginEvents;
+  message_events: MessageEvents;
+  message_templates: MessageTemplates;
+  messages: Messages;
   mfa_recovery_codes: MfaRecoveryCodes;
   numbering_formats: NumberingFormats;
   numbering_sequences: NumberingSequences;
   outbox: Outbox;
   password_reset_tokens: PasswordResetTokens;
+  payment_allocations: PaymentAllocations;
+  payment_reversals: PaymentReversals;
+  payments: Payments;
   permissions: Permissions;
+  promises_to_pay: PromisesToPay;
+  receipts: Receipts;
+  reminder_rules: ReminderRules;
   role_permissions: RolePermissions;
   roles: Roles;
   sessions: Sessions;

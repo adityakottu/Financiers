@@ -4,3 +4,4 @@ export { generateSchedule, dueDates, periodsPerYear, ENGINE_VERSION } from './sc
 export { xirr } from './apr';
 export * from './penalty';
 export * from './fees';
+export * from './allocate';

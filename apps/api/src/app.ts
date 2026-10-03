@@ -12,6 +12,8 @@ export async function createApp(config: AppConfig): Promise<INestApplication> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(config), {
     logger: config.env === 'test' ? ['error'] : ['log', 'warn', 'error'],
     bodyParser: false,
+    // Webhook signatures are computed over the exact bytes received.
+    rawBody: true,
   });
   app.set('trust proxy', config.trustProxy);
   app.disable('x-powered-by');

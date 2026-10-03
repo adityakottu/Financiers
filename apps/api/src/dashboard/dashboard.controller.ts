@@ -103,7 +103,39 @@ export class DashboardController {
           .execute()
       : [];
 
+    const collections = ctx.auth.permissions.has('payment.view') && ctx.auth.scope !== 'ASSIGNED'
+      ? await this.db
+          .selectFrom('payments')
+          .select([
+            sql<string>`coalesce(sum(amount), 0)::text`.as('total'),
+            sql<string>`count(*)`.as('n'),
+            sql<string>`coalesce(sum(amount) FILTER (WHERE method = 'CASH'), 0)::text`.as('cash'),
+            sql<string>`coalesce(sum(amount) FILTER (WHERE method = 'UPI'), 0)::text`.as('upi'),
+            sql<string>`coalesce(sum(amount) FILTER (WHERE method = 'BANK_TRANSFER'), 0)::text`.as('bank'),
+            sql<string>`coalesce(sum(amount) FILTER (WHERE method = 'CHEQUE'), 0)::text`.as('cheque'),
+          ])
+          .where('business_date', '=', today)
+          .where('status', '<>', 'REVERSED')
+          .$if(ids !== null, (q) => q.where('branch_id', 'in', ids!))
+          .executeTakeFirstOrThrow()
+      : null;
+    const pendingReversals = collections
+      ? await this.db
+          .selectFrom('payment_reversals as r')
+          .innerJoin('payments as p', 'p.id', 'r.payment_id')
+          .select(sql<string>`count(*)`.as('n'))
+          .where('r.status', '=', 'REQUESTED')
+          .$if(ids !== null, (q) => q.where('p.branch_id', 'in', ids!))
+          .executeTakeFirstOrThrow()
+      : null;
+
     return {
+      collections: collections && {
+        today: collections.total,
+        count: Number(collections.n),
+        byMethod: { CASH: collections.cash, UPI: collections.upi, BANK_TRANSFER: collections.bank, CHEQUE: collections.cheque },
+        pendingReversals: Number(pendingReversals!.n),
+      },
       loans: loans && {
         active: Number(loans.active),
         closed: Number(loans.closed),
@@ -131,7 +163,6 @@ export class DashboardController {
       staff: staff && { active: Number(staff.active), collectors: Number(staff.collectors) },
       branches: byBranch.map((b) => ({ id: b.id, code: b.code, name: b.name, activeCustomers: Number(b.active_customers) })),
       availableFrom: {
-        collections: 'Phase 4',
         accounting: 'Phase 5',
         reconciliation: 'Phase 6',
       },

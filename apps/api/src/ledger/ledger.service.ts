@@ -37,6 +37,7 @@ export const GL = {
   INTEREST_RECEIVABLE: '1320',
   FEES_RECEIVABLE: '1330',
   PENAL_RECEIVABLE: '1340',
+  CUSTOMER_ADVANCE: '2200',
   GST_OUTPUT: '2310',
   OPENING_EQUITY: '3900',
   INTEREST_INCOME: '4100',
@@ -124,6 +125,57 @@ export class LedgerService {
     return { id: entry.id, entryNo };
   }
 
+  /**
+   * Post the exact mirror of an entry (doc 07 E10): every debit becomes a credit and vice versa,
+   * linked by reverses_entry_id. The original stays untouched in its own date.
+   */
+  async reverse(tx: Tx, entryId: string, p: { valueDate: string; narration: string; createdBy: string | null; sourceType: string; sourceId: string; approvedBy?: string | null }) {
+    const original = await tx.selectFrom('journal_entries').selectAll().where('id', '=', entryId).executeTakeFirstOrThrow();
+    const lines = await tx.selectFrom('journal_lines').selectAll().where('entry_id', '=', entryId).orderBy('line_no').execute();
+    return this.post(tx, {
+      entryType: 'REVERSAL',
+      valueDate: p.valueDate,
+      branchId: original.branch_id,
+      sourceType: p.sourceType,
+      sourceId: p.sourceId,
+      narration: p.narration,
+      reversesEntryId: entryId,
+      createdBy: p.createdBy,
+      lines: lines.map((l) => ({
+        account: l.account_id,
+        ...(Money.of(l.debit).isPositive() ? { credit: Money.of(l.debit) } : { debit: Money.of(l.credit) }),
+        loanId: l.loan_id,
+        customerId: l.customer_id,
+        employeeId: l.employee_id,
+        memo: l.memo ? `Reversal: ${l.memo}` : 'Reversal',
+      })),
+    });
+  }
+
+  /** Cash-in-hand account for a collector (doc 07: 1120-{EMP}, decision D5). Idempotent. */
+  async employeeCashAccount(db: Executor, employeeId: string): Promise<{ id: string; code: string }> {
+    const existing = await db.selectFrom('accounts').select(['id', 'code']).where('employee_id', '=', employeeId).where('subtype', '=', 'EMPLOYEE_CASH').executeTakeFirst();
+    if (existing) return existing;
+    const e = await db.selectFrom('employees').select(['id', 'employee_code', 'full_name', 'branch_id']).where('id', '=', employeeId).executeTakeFirstOrThrow();
+    const parent = await db.selectFrom('accounts').select('id').where('code', '=', '1100').executeTakeFirstOrThrow();
+    await db
+      .insertInto('accounts')
+      .values({
+        code: `1120-${e.employee_code}`,
+        name: `Cash in Hand — ${e.full_name}`,
+        type: 'ASSET',
+        normal_balance: 'DEBIT',
+        parent_id: parent.id,
+        subtype: 'EMPLOYEE_CASH',
+        branch_id: e.branch_id,
+        employee_id: e.id,
+        is_system: true,
+      })
+      .onConflict((oc) => oc.column('code').doNothing())
+      .execute();
+    return db.selectFrom('accounts').select(['id', 'code']).where('code', '=', `1120-${e.employee_code}`).executeTakeFirstOrThrow();
+  }
+
   /** Cash and cheque accounts every branch needs. Idempotent. */
   ensureBranchAccounts(db: Executor, branch: { id: string; code: string; name: string }) {
     return ensureBranchAccounts(db, branch);
@@ -149,7 +201,7 @@ export class LedgerService {
         type: 'ASSET',
         normal_balance: 'DEBIT',
         parent_id: parent.id,
-        subtype: input.kind === 'UPI_SETTLEMENT' ? 'UPI_CLEARING' : 'BANK',
+        subtype: 'BANK',
         created_by: userId,
       })
       .returning(['id', 'code', 'name'])
@@ -179,7 +231,7 @@ export class LedgerService {
       .select(['a.id', 'a.code', 'a.name', 'a.subtype', 'b.bank_name', 'b.account_no_last4'])
       .where('a.is_active', '=', true)
       .where((eb) =>
-        eb.or([eb.and([eb('a.subtype', '=', 'CASH'), eb('a.branch_id', '=', branchId)]), eb('a.subtype', 'in', ['BANK', 'UPI_CLEARING'])]),
+        eb.or([eb.and([eb('a.subtype', '=', 'CASH'), eb('a.branch_id', '=', branchId)]), eb('a.subtype', '=', 'BANK')]),
       )
       .orderBy('a.code')
       .execute();
@@ -261,11 +313,13 @@ export class LedgerService {
 /** Standalone so seeding (outside Nest) can call it too. */
 export async function ensureBranchAccounts(db: Executor, branch: { id: string; code: string; name: string }) {
   const cash = await db.selectFrom('accounts').select('id').where('code', '=', '1100').executeTakeFirstOrThrow();
+  const bank = await db.selectFrom('accounts').select('id').where('code', '=', '1200').executeTakeFirstOrThrow();
   await db
     .insertInto('accounts')
     .values([
       { code: `1110-${branch.code}`, name: `Branch Cash — ${branch.name}`, type: 'ASSET', normal_balance: 'DEBIT', parent_id: cash.id, subtype: 'CASH', branch_id: branch.id, is_system: true },
       { code: `1130-${branch.code}`, name: `Cheques in Hand — ${branch.name}`, type: 'ASSET', normal_balance: 'DEBIT', parent_id: cash.id, subtype: 'CHEQUES_IN_HAND', branch_id: branch.id, is_system: true },
+      { code: `1250-${branch.code}`, name: `UPI Clearing — ${branch.name}`, type: 'ASSET', normal_balance: 'DEBIT', parent_id: bank.id, subtype: 'UPI_CLEARING', branch_id: branch.id, is_system: true },
     ])
     .onConflict((oc) => oc.column('code').doNothing())
     .execute();

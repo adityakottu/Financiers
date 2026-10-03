@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { RemindButton, VisitDialog } from '@/components/collections';
 import { CollectDialog, CollectTarget } from '@/components/payments';
+import { MyCashCard } from '@/components/reconciliation';
 import { Alert, Badge, Button, Card, cx, EmptyState, Input, PageHeader, Spinner } from '@/components/ui';
 import { date, dateTime, inr } from '@/lib/format';
 import { useApi } from '@/lib/hooks';
@@ -104,6 +105,16 @@ export default function CollectPage() {
           ))}
         </div>
       </Card>
+
+      {can('settlement.submit') && (
+        <Card className="mb-4">
+          <div className="border-b border-line px-4 py-3">
+            <h2 className="text-sm font-semibold text-ink-950">End-of-day cash</h2>
+            <p className="text-[12px] text-muted">Declare the cash you are handing over. Someone else counts it — you never approve your own cash.</p>
+          </div>
+          <MyCashCard employeeId={me.employee.id} day={data.date} />
+        </Card>
+      )}
 
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="flex gap-1 overflow-x-auto rounded-lg bg-canvas p-1" role="tablist">

@@ -165,7 +165,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="flex-1 overflow-y-auto px-3 py-5">
           <NavLinks />
         </div>
-        <div className="border-t border-white/10 px-5 py-3 text-[11px] text-white/35">Phase 5 · Accounting</div>
+        <div className="border-t border-white/10 px-5 py-3 text-[11px] text-white/35">Phase 6 · Reconciliation</div>
       </aside>
 
       {/* Mobile drawer */}

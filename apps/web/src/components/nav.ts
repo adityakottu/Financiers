@@ -59,7 +59,7 @@ export const NAV: NavGroup[] = [
   {
     label: 'Money',
     items: [
-      { label: 'Reconciliation', href: '/reconciliation', icon: Scale, phase: 6 },
+      { label: 'Reconciliation', href: '/reconciliation', icon: Scale, requires: ['recon.view'] },
       { label: 'Payments & receipts', href: '/payments', icon: Receipt, requires: ['payment.view'] },
       { label: 'Accounts', href: '/accounts', icon: Wallet, requires: ['ledger.view'] },
       { label: 'Cash & bank', href: '/banking', icon: Landmark, requiresAny: ['deposit.record', 'ledger.view', 'cheque.manage'] },

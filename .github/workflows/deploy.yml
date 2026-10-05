@@ -1,0 +1,122 @@
+name: Deploy
+
+# Staging: every push to main. Production: a version tag (v1.2.3) — and a person must approve in the
+# GitHub "production" environment (doc 13 §4). AWS access is short-lived via OIDC; no keys stored.
+#
+# GitHub environments "staging" and "production" need these variables (from `terraform output`):
+#   AWS_DEPLOY_ROLE_ARN, ECR_API, ECR_WEB, ECS_CLUSTER, APP_SUBNETS (comma-separated),
+#   APP_SECURITY_GROUP, DB_INSTANCE, APP_URL (https://…)
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options: [staging, production]
+        default: staging
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ github.event.inputs.environment || (startsWith(github.ref, 'refs/tags/') && 'production' || 'staging') }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Skipped until the AWS environment exists (infra/terraform) and its variables are set.
+    if: vars.AWS_DEPLOY_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: ${{ github.event.inputs.environment || (startsWith(github.ref, 'refs/tags/') && 'production' || 'staging') }}
+    env:
+      AWS_REGION: ap-south-1
+      TAG: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-south-1
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push images (immutable tags)
+        run: |
+          set -euo pipefail
+          for app in api web; do
+            repo_var="ECR_$(echo $app | tr a-z A-Z)"; repo="${!repo_var}"
+            if aws ecr describe-images --repository-name "${repo##*/}" --image-ids imageTag="$TAG" >/dev/null 2>&1; then
+              echo "$app:$TAG already pushed"; continue
+            fi
+            docker buildx build --push -f apps/$app/Dockerfile -t "$repo:$TAG" .
+          done
+        env:
+          ECR_API: ${{ vars.ECR_API }}
+          ECR_WEB: ${{ vars.ECR_WEB }}
+
+      - name: Scan the API image (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ vars.ECR_API }}:${{ env.TAG }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Database snapshot before the release (production)
+        if: github.ref_type == 'tag' || github.event.inputs.environment == 'production'
+        run: |
+          id="${{ vars.DB_INSTANCE }}-pre-$(echo "$TAG" | tr -c 'a-zA-Z0-9-' '-' | cut -c1-40)-$(date -u +%Y%m%d%H%M)"
+          aws rds create-db-snapshot --db-instance-identifier "${{ vars.DB_INSTANCE }}" --db-snapshot-identifier "$id"
+          aws rds wait db-snapshot-available --db-snapshot-identifier "$id"
+          echo "snapshot $id ready — rollback point"
+
+      - name: Register task definitions with the new image
+        id: td
+        run: |
+          set -euo pipefail
+          cluster="${{ vars.ECS_CLUSTER }}"
+          for fam in api worker web release backup drill; do
+            image="${{ vars.ECR_API }}:$TAG"; [ "$fam" = web ] && image="${{ vars.ECR_WEB }}:$TAG"
+            aws ecs describe-task-definition --task-definition "$cluster-$fam" --query taskDefinition > td.json
+            jq --arg img "$image" '.containerDefinitions[0].image = $img
+              | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' td.json > new.json
+            arn=$(aws ecs register-task-definition --cli-input-json file://new.json --query taskDefinition.taskDefinitionArn --output text)
+            echo "$fam=$arn" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Release task (migrations, reference data, roles) — must succeed before any traffic moves
+        run: |
+          set -euo pipefail
+          task=$(aws ecs run-task --cluster "${{ vars.ECS_CLUSTER }}" --launch-type FARGATE \
+            --task-definition "${{ steps.td.outputs.release }}" \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ vars.APP_SUBNETS }}],securityGroups=[${{ vars.APP_SECURITY_GROUP }}],assignPublicIp=DISABLED}" \
+            --query 'tasks[0].taskArn' --output text)
+          aws ecs wait tasks-stopped --cluster "${{ vars.ECS_CLUSTER }}" --tasks "$task"
+          code=$(aws ecs describe-tasks --cluster "${{ vars.ECS_CLUSTER }}" --tasks "$task" --query 'tasks[0].containers[0].exitCode' --output text)
+          echo "release task exit code: $code"
+          test "$code" = 0
+
+      - name: Roll out (rolling, 100% healthy minimum, automatic rollback on failed health checks)
+        run: |
+          set -euo pipefail
+          c="${{ vars.ECS_CLUSTER }}"
+          aws ecs update-service --cluster "$c" --service api --task-definition "${{ steps.td.outputs.api }}" >/dev/null
+          aws ecs update-service --cluster "$c" --service web --task-definition "${{ steps.td.outputs.web }}" >/dev/null
+          aws ecs update-service --cluster "$c" --service worker --task-definition "${{ steps.td.outputs.worker }}" >/dev/null
+          aws ecs wait services-stable --cluster "$c" --services api web worker
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          curl -sf "${{ vars.APP_URL }}/api/v1/health/ready" | grep -q '"ready"'
+          curl -sf -o /dev/null "${{ vars.APP_URL }}/login"
+          curl -sfI "${{ vars.APP_URL }}/login" | grep -qi 'strict-transport-security'
+          echo "deployed $TAG to ${{ vars.APP_URL }}"

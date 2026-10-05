@@ -1,5 +1,6 @@
 import type { Permission } from '@fin/contracts';
 import {
+  Activity,
   BarChart3,
   BookOpen,
   Calculator,
@@ -8,6 +9,8 @@ import {
   Boxes,
   Building2,
   Gavel,
+  GitCompare,
+  Upload,
   CalendarClock,
   FileText,
   HandCoins,
@@ -80,7 +83,10 @@ export const NAV: NavGroup[] = [
       { label: 'Loan products', href: '/admin/products', icon: Package, requires: ['loan.view'] },
       { label: 'Communications', href: '/communications', icon: MessageSquare, requires: ['message.view'] },
       { label: 'Waiting for you', href: '/notifications', icon: Bell },
+      { label: 'Data migration', href: '/migration', icon: Upload, requiresAny: ['import.run', 'import.confirm'] },
+      { label: 'Pilot comparison', href: '/pilot', icon: GitCompare, requires: ['pilot.compare'] },
       { label: 'Audit log', href: '/audit', icon: ScrollText, requires: ['audit.view'] },
+      { label: 'System health', href: '/admin/system', icon: Activity, requiresAny: ['settings.company', 'audit.view'] },
       { label: 'Settings', href: '/admin/settings', icon: Settings, requires: ['settings.company'] },
     ],
   },

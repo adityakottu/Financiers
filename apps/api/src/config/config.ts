@@ -27,7 +27,22 @@ const envSchema = z.object({
   SESSION_IDLE_MINUTES_COLLECTOR: z.coerce.number().int().min(5).default(480),
   SESSION_ABSOLUTE_HOURS: z.coerce.number().int().min(1).default(12),
   FILE_STORAGE_DIR: z.string().default('./storage'),
+  // Uploaded documents: 'local' (FILE_STORAGE_DIR) or 's3' (private bucket, SSE-KMS; credentials from the task role).
+  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  S3_BUCKET: z.string().min(3).optional(),
+  S3_REGION: z.string().default('ap-south-1'),
+  S3_PREFIX: z.string().default('files/'),
+  S3_KMS_KEY_ID: z.string().optional(),
+  S3_ENDPOINT: z.string().url().optional(), // only for S3-compatible test servers (MinIO)
+  // Logs: 'json' (one JSON object per line, for CloudWatch) or 'pretty'. Default: json in production.
+  LOG_FORMAT: z.enum(['json', 'pretty']).optional(),
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
+  /** clamd address for malware scanning, host:port (doc 11 §5). Required in production. */
+  CLAMAV_ADDRESS: z.string().regex(/^[\w.-]+:\d+$/).optional(),
+  /** Forces maintenance mode on (refuse all changes) regardless of the in-app switch. */
+  // Requests per client IP per minute (default limiter; auth routes are tighter). Raise only for load tests.
+  RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(10).max(1_000_000).default(300),
+  MAINTENANCE_MODE: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   /** Public URL of the web app, printed on receipts (QR code for verification). */
   PUBLIC_WEB_URL: z.string().url().optional(),
   /** SMS: 'msg91' (DLT-registered templates) or 'log' (nothing is sent; messages are marked SIMULATED). */
@@ -65,6 +80,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   }
   const production = c.NODE_ENV === 'production';
   if (production && !c.ENFORCE_MFA) throw new Error('ENFORCE_MFA cannot be disabled in production');
+  if (c.STORAGE_DRIVER === 's3' && !c.S3_BUCKET) throw new Error('STORAGE_DRIVER=s3 needs S3_BUCKET');
+  if (production && !c.CLAMAV_ADDRESS) throw new Error('CLAMAV_ADDRESS (clamd host:port) is required in production: uploads must be virus-scanned');
   const cookieSecure = c.COOKIE_SECURE ?? production;
   if (c.SMS_PROVIDER === 'msg91' && !(c.MSG91_AUTH_KEY && c.MSG91_SENDER_ID)) {
     throw new Error('SMS_PROVIDER=msg91 needs MSG91_AUTH_KEY and MSG91_SENDER_ID');
@@ -89,7 +106,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     sessionIdleCollectorMs: c.SESSION_IDLE_MINUTES_COLLECTOR * 60_000,
     sessionAbsoluteMs: c.SESSION_ABSOLUTE_HOURS * 3_600_000,
     fileStorageDir: c.FILE_STORAGE_DIR,
+    storage:
+      c.STORAGE_DRIVER === 's3'
+        ? { driver: 's3' as const, bucket: c.S3_BUCKET!, region: c.S3_REGION, prefix: c.S3_PREFIX, kmsKeyId: c.S3_KMS_KEY_ID ?? null, endpoint: c.S3_ENDPOINT ?? null }
+        : { driver: 'local' as const, dir: c.FILE_STORAGE_DIR },
+    logFormat: c.LOG_FORMAT ?? (production ? 'json' : 'pretty'),
     trustProxy: c.TRUST_PROXY,
+    maintenanceMode: c.MAINTENANCE_MODE,
+    rateLimitPerMinute: c.RATE_LIMIT_PER_MINUTE,
+    clamav: c.CLAMAV_ADDRESS ? { host: c.CLAMAV_ADDRESS.split(':')[0]!, port: Number(c.CLAMAV_ADDRESS.split(':')[1]) } : null,
     publicWebUrl: (c.PUBLIC_WEB_URL ?? c.APP_ORIGIN.split(',')[0]!.trim()).replace(/\/$/, ''),
     workers: c.WORKERS ?? c.NODE_ENV !== 'test',
     sms: { provider: c.SMS_PROVIDER, authKey: c.MSG91_AUTH_KEY ?? null, senderId: c.MSG91_SENDER_ID ?? null, webhookToken: c.MSG91_WEBHOOK_TOKEN ?? null },

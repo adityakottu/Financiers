@@ -504,7 +504,12 @@ export class CustomersService {
     ]);
     let matchedBy: string;
 
-    if (/^[A-Z]{5}\d{4}[A-Z]$/.test(upper)) {
+    // A number from the old system (data migration) finds its customer exactly.
+    const legacy = !/\s/.test(t) && t.length <= 40 ? await this.db.selectFrom('customers').select('id').where('legacy_no', '=', t).executeTakeFirst() : undefined;
+    if (legacy) {
+      matchedBy = 'LEGACY_NO';
+      base = base.where('c.legacy_no', '=', t);
+    } else if (/^[A-Z]{5}\d{4}[A-Z]$/.test(upper)) {
       matchedBy = 'PAN';
       const bidx = this.crypto.blindIndex('PAN', upper);
       base = base.where('c.id', 'in', (eb) =>
@@ -540,17 +545,28 @@ export class CustomersService {
       );
     } else {
       matchedBy = 'NAME';
-      const clean = t.replace(/[%_\\]/g, '');
-      base = base
-        // `%` = whole-name similarity (typos); `<%` = best-matching part of the name (partial input
-        // like "lakshmi r"). Both use the trigram GIN index.
-        .where((eb) =>
-          eb.or([eb('c.full_name', 'ilike', `%${clean}%`), sql<boolean>`c.full_name % ${clean}`, sql<boolean>`${clean} <% c.full_name`]),
-        )
-        .orderBy(sql`greatest(similarity(c.full_name, ${clean}), word_similarity(${clean}, c.full_name))`, 'desc');
+      // Nearest names first, straight from the GiST trigram index (KNN): `<<->` is the word-similarity
+      // distance, so partial input ("lakshmi r") and typos both rank. Rows further than 0.7 (word
+      // similarity < 0.3) are dropped after the LIMIT — they sort last, so this equals filtering first,
+      // without scanning the whole index when nothing is close.
+      const rows = await base
+        .select(sql<number>`${t} <<-> c.full_name`.as('distance'))
+        // No tie-breaker column: a second sort key stops PostgreSQL from reading the index in order.
+        .orderBy(sql`${t} <<-> c.full_name`)
+        .limit(limit)
+        .execute();
+      return this.withActiveLoans(auth, matchedBy, rows.filter((r) => Number(r.distance) <= 0.7));
     }
 
     const rows = await base.orderBy('c.id', 'desc').limit(limit).execute();
+    return this.withActiveLoans(auth, matchedBy, rows);
+  }
+
+  private async withActiveLoans(
+    auth: AuthContext,
+    matchedBy: string,
+    rows: { id: string; customer_no: string; full_name: string; mobile: string; village_town: string | null; kyc_status: string; status: string; branch_code: string }[],
+  ) {
     const active = rows.length
       ? await this.loans
           .scoped(this.db, auth)
@@ -605,7 +621,11 @@ export class CustomersService {
         'b.code as branch_code',
         sql<string>`coalesce(a.registration_no, nullif(concat_ws(' ', a.make, a.model), ''), a.description)`.as('asset_label'),
       ]);
-    if (/^LN[-/]?[A-Z0-9]/i.test(t)) {
+    const legacy = !/\s/.test(t) && t.length <= 40 ? await this.db.selectFrom('loans').select('id').where('legacy_no', '=', t).executeTakeFirst() : undefined;
+    if (legacy) {
+      matchedBy = 'LEGACY_NO';
+      q = q.where('l.legacy_no', '=', t);
+    } else if (/^LN[-/]?[A-Z0-9]/i.test(t)) {
       matchedBy = 'LOAN_NO';
       q = q.where('l.loan_no', 'ilike', `%${t.replace(/[%_\\]/g, '')}%`);
     } else if (REGISTRATION_RE.test(normaliseRegistration(t)) && /[A-Z]/i.test(t) && /\d/.test(t)) {

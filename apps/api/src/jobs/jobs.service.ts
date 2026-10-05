@@ -14,6 +14,8 @@ import { accrueInterest, rollStatuses } from '../lending/dues';
 import { LoansService } from '../lending/loans.service';
 import { MessagingService } from '../messaging/messaging.service';
 import { RecoveryService } from '../recovery/recovery.service';
+import { FilesService } from '../files/files.service';
+import { IntegrityService } from '../integrity/integrity.service';
 
 const JOB = 'daily.close';
 const LOCK_KEY = 7314100;
@@ -62,13 +64,19 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
     private readonly collections: CollectionsService,
     private readonly messaging: MessagingService,
     private readonly recovery: RecoveryService,
+    private readonly files: FilesService,
+    private readonly integrity: IntegrityService,
   ) {}
 
   onApplicationBootstrap() {
     if (!this.config.workers) return;
     // Check every 10 minutes; after 00:05 IST, run any business dates not yet processed.
     const tick = () => {
-      if (!this.stopped) void this.catchUp().catch((e) => this.log.error(e));
+      if (this.stopped) return;
+      void this.catchUp()
+        .then(() => this.integrity.nightly())
+        .catch((e) => this.log.error(e));
+      void this.files.rescanPending(this.db).catch((e) => this.log.error(e));
     };
     this.timer = setInterval(tick, 10 * 60_000);
     this.startup = setTimeout(tick, 5_000);

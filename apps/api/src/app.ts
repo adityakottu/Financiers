@@ -6,11 +6,12 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AppConfig } from './config/config';
 import { ErrorFilter } from './common/http';
+import { accessLog, JsonLogger } from './common/logging';
 
 /** Shared by main.ts and the integration tests so both run the exact same pipeline. */
 export async function createApp(config: AppConfig): Promise<INestApplication> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(config), {
-    logger: config.env === 'test' ? ['error'] : ['log', 'warn', 'error'],
+    logger: config.env === 'test' ? ['error'] : config.logFormat === 'json' ? new JsonLogger() : ['log', 'warn', 'error'],
     bodyParser: false,
     // Webhook signatures are computed over the exact bytes received.
     rawBody: true,
@@ -27,6 +28,7 @@ export async function createApp(config: AppConfig): Promise<INestApplication> {
     }),
   );
   app.use(cookieParser());
+  if (config.logFormat === 'json' && config.env !== 'test') app.use(accessLog);
   app.setGlobalPrefix('api/v1');
   app.useGlobalFilters(new ErrorFilter());
   app.use((_req: unknown, res: { setHeader: (k: string, v: string) => void }, next: () => void) => {

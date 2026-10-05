@@ -12,3 +12,11 @@ coverage/
 next-env.d.ts
 apps/api/storage/
 .demo-credentials
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl.bak

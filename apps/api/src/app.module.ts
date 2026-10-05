@@ -89,7 +89,7 @@ export class AppModule implements NestModule {
       imports: [
         ThrottlerModule.forRoot({
           // Generous default per client IP; auth routes set tighter limits with @Throttle.
-          throttlers: [{ name: 'default', ttl: 60_000, limit: 300 }],
+          throttlers: [{ name: 'default', ttl: 60_000, limit: config.rateLimitPerMinute }],
           storage: new PgThrottlerStorage(throttleDb),
           // Integration tests make many logins from one IP; they opt in with a header when testing limits.
           skipIf: (ctx) =>

@@ -540,17 +540,28 @@ export class CustomersService {
       );
     } else {
       matchedBy = 'NAME';
-      const clean = t.replace(/[%_\\]/g, '');
-      base = base
-        // `%` = whole-name similarity (typos); `<%` = best-matching part of the name (partial input
-        // like "lakshmi r"). Both use the trigram GIN index.
-        .where((eb) =>
-          eb.or([eb('c.full_name', 'ilike', `%${clean}%`), sql<boolean>`c.full_name % ${clean}`, sql<boolean>`${clean} <% c.full_name`]),
-        )
-        .orderBy(sql`greatest(similarity(c.full_name, ${clean}), word_similarity(${clean}, c.full_name))`, 'desc');
+      // Nearest names first, straight from the GiST trigram index (KNN): `<<->` is the word-similarity
+      // distance, so partial input ("lakshmi r") and typos both rank. Rows further than 0.7 (word
+      // similarity < 0.3) are dropped after the LIMIT — they sort last, so this equals filtering first,
+      // without scanning the whole index when nothing is close.
+      const rows = await base
+        .select(sql<number>`${t} <<-> c.full_name`.as('distance'))
+        // No tie-breaker column: a second sort key stops PostgreSQL from reading the index in order.
+        .orderBy(sql`${t} <<-> c.full_name`)
+        .limit(limit)
+        .execute();
+      return this.withActiveLoans(auth, matchedBy, rows.filter((r) => Number(r.distance) <= 0.7));
     }
 
     const rows = await base.orderBy('c.id', 'desc').limit(limit).execute();
+    return this.withActiveLoans(auth, matchedBy, rows);
+  }
+
+  private async withActiveLoans(
+    auth: AuthContext,
+    matchedBy: string,
+    rows: { id: string; customer_no: string; full_name: string; mobile: string; village_town: string | null; kyc_status: string; status: string; branch_code: string }[],
+  ) {
     const active = rows.length
       ? await this.loans
           .scoped(this.db, auth)

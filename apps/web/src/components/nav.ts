@@ -1,5 +1,6 @@
 import type { Permission } from '@fin/contracts';
 import {
+  Activity,
   BarChart3,
   BookOpen,
   Calculator,
@@ -81,6 +82,7 @@ export const NAV: NavGroup[] = [
       { label: 'Communications', href: '/communications', icon: MessageSquare, requires: ['message.view'] },
       { label: 'Waiting for you', href: '/notifications', icon: Bell },
       { label: 'Audit log', href: '/audit', icon: ScrollText, requires: ['audit.view'] },
+      { label: 'System health', href: '/admin/system', icon: Activity, requiresAny: ['settings.company', 'audit.view'] },
       { label: 'Settings', href: '/admin/settings', icon: Settings, requires: ['settings.company'] },
     ],
   },

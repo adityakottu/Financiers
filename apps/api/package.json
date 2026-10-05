@@ -12,6 +12,8 @@
     "db:seed": "tsx src/db/seed.ts",
     "db:roles": "tsx src/db/roles.ts",
     "db:verify": "tsx src/integrity/cli.ts",
+    "perf:seed": "nest build && node dist/perf/seed-volume.js",
+    "perf:load": "tsx src/perf/load-test.ts",
     "db:codegen": "kysely-codegen --dialect postgres --date-parser string --out-file src/db/schema.ts --exclude-pattern schema_migrations",
     "db:seed:demo": "nest build && node dist/db/seed-demo.js"
   },

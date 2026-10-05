@@ -60,7 +60,7 @@ export class InboxService {
       () => sql<{ n: number }>`SELECT count(*)::int n FROM loan_write_offs w JOIN loans l ON l.id = w.loan_id WHERE w.status = 'PENDING' AND w.requested_by <> ${me} ${br('l.branch_id')}`);
     add(p('recovery.manage'), 'no-case', 'Overdue loans without a recovery case', 'Past due and not yet being worked as a case', '/recovery',
       () => sql<{ n: number }>`SELECT count(*)::int n FROM loans l WHERE l.status = 'ACTIVE' AND l.dpd > 30 AND NOT EXISTS (SELECT 1 FROM recovery_cases r WHERE r.loan_id = l.id AND r.status = 'OPEN') ${br('l.branch_id')}`, 'info');
-    add(p('jobs.run') || p('audit.view'), 'integrity', 'Integrity check failed', 'The last ledger / audit integrity check found a problem — see the runbook', '/admin/integrity',
+    add(p('jobs.run') || p('audit.view'), 'integrity', 'Integrity check failed', 'The last ledger / audit integrity check found a problem — see the runbook', '/admin/system',
       () => sql<{ n: number }>`SELECT (CASE WHEN (SELECT ok FROM integrity_runs WHERE finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 1) = false THEN 1 ELSE 0 END)::int n`);
     add(true, 'exports', 'Exports ready', 'Large reports prepared in the background', '/reports',
       () => sql<{ n: number }>`SELECT count(*)::int n FROM export_jobs j WHERE j.requested_by = ${me} AND j.status = 'DONE' AND j.finished_at > now() - interval '1 day'`, 'ok');

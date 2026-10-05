@@ -31,6 +31,8 @@ const envSchema = z.object({
   /** clamd address for malware scanning, host:port (doc 11 §5). Required in production. */
   CLAMAV_ADDRESS: z.string().regex(/^[\w.-]+:\d+$/).optional(),
   /** Forces maintenance mode on (refuse all changes) regardless of the in-app switch. */
+  // Requests per client IP per minute (default limiter; auth routes are tighter). Raise only for load tests.
+  RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(10).max(1_000_000).default(300),
   MAINTENANCE_MODE: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   /** Public URL of the web app, printed on receipts (QR code for verification). */
   PUBLIC_WEB_URL: z.string().url().optional(),
@@ -96,6 +98,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     fileStorageDir: c.FILE_STORAGE_DIR,
     trustProxy: c.TRUST_PROXY,
     maintenanceMode: c.MAINTENANCE_MODE,
+    rateLimitPerMinute: c.RATE_LIMIT_PER_MINUTE,
     clamav: c.CLAMAV_ADDRESS ? { host: c.CLAMAV_ADDRESS.split(':')[0]!, port: Number(c.CLAMAV_ADDRESS.split(':')[1]) } : null,
     publicWebUrl: (c.PUBLIC_WEB_URL ?? c.APP_ORIGIN.split(',')[0]!.trim()).replace(/\/$/, ''),
     workers: c.WORKERS ?? c.NODE_ENV !== 'test',

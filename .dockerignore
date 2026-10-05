@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/.next
+**/coverage
+**/*.tsbuildinfo
+**/.env
+**/.env.*
+!**/.env.example
+**/storage
+.git
+.github
+.devcontainer
+docs
+infra
+*.log
+.demo-credentials

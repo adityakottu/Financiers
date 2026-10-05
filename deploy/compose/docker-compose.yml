@@ -1,0 +1,99 @@
+# Single-server deployment for the pilot (doc 13 §5: "a lower-cost single-VM alternative is viable
+# for the pilot"). One Linux server in India (e.g. AWS Lightsail / EC2 in Mumbai) with Docker.
+# Managed PostgreSQL (RDS) is strongly preferred even here: set DATABASE_URL / MIGRATE_DATABASE_URL to
+# it and leave the `localdb` profile off. See docs/deployment.md.
+#
+#   cp .env.example .env   # fill it in (secrets!)
+#   docker compose build
+#   docker compose run --rm release          # migrations, reference data, first admin, roles
+#   docker compose up -d
+#
+# Everything runs as non-root; only Caddy (HTTPS, automatic certificates) is exposed.
+
+x-app: &app
+  image: financiers-api:${VERSION:-latest}
+  build: { context: ../.., dockerfile: apps/api/Dockerfile }
+  env_file: .env
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  volumes: [documents:/data/files]
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ['80:80', '443:443']
+    environment: { DOMAIN: '${DOMAIN:?set DOMAIN in .env}' }
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [web, api]
+
+  web:
+    image: financiers-web:${VERSION:-latest}
+    build: { context: ../.., dockerfile: apps/web/Dockerfile, args: { API_URL: 'http://api:4000' } }
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
+  api:
+    <<: *app
+    environment: { WORKERS: 'false', CLAMAV_ADDRESS: 'clamav:3310', TRUST_PROXY: '1', FILE_STORAGE_DIR: /data/files }
+    depends_on: { clamav: { condition: service_healthy } }
+    healthcheck: { test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:4000/api/v1/health/ready'], interval: 30s, timeout: 5s, retries: 3 }
+
+  # Background jobs (end of day, reminders, integrity checks, rescans). One instance only.
+  worker:
+    <<: *app
+    environment: { WORKERS: 'true', CLAMAV_ADDRESS: 'clamav:3310', TRUST_PROXY: '1', FILE_STORAGE_DIR: /data/files }
+    depends_on: { clamav: { condition: service_healthy } }
+
+  # One-off, on every upgrade, before `up -d`: docker compose run --rm release
+  release:
+    <<: *app
+    restart: 'no'
+    command: ['node', 'dist/ops/release.js']
+    profiles: [tools]
+
+  # Nightly backup at 01:30 IST to BACKUP_TARGET (an S3 bucket in India with Object Lock, or /backups).
+  backup:
+    <<: *app
+    entrypoint: ['/bin/bash', '-c']
+    command:
+      - |
+        while true; do
+          now=$$(date -u +%s); next=$$(date -u -d "$$(date -u +%F) 20:00:00" +%s 2>/dev/null || echo $$((now + 86400)))
+          [ "$$next" -le "$$now" ] && next=$$((next + 86400))
+          sleep $$((next - now))
+          DATABASE_URL="$$MIGRATE_DATABASE_URL" /app/scripts/backup.sh || echo '{"level":"error","context":"backup","msg":"BACKUP FAILED"}'
+        done
+    volumes: [documents:/data/files:ro, backups:/backups]
+
+  clamav:
+    image: clamav/clamav:stable
+    restart: unless-stopped
+    volumes: [clamav:/var/lib/clamav]
+    healthcheck: { test: ['CMD', 'clamdcheck.sh'], interval: 60s, timeout: 10s, retries: 10, start_period: 300s }
+
+  # Only if you cannot use managed PostgreSQL: docker compose --profile localdb up -d
+  postgres:
+    image: postgres:16-alpine
+    profiles: [localdb]
+    restart: unless-stopped
+    environment: { POSTGRES_USER: fin_owner, POSTGRES_PASSWORD: '${POSTGRES_PASSWORD:-}', POSTGRES_DB: financiers }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ['CMD-SHELL', 'pg_isready -U fin_owner'], interval: 10s, retries: 10 }
+
+volumes:
+  documents:
+  backups:
+  clamav:
+  pgdata:
+  caddy_data:
+  caddy_config:

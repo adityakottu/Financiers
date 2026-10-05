@@ -1,9 +1,14 @@
 import type { NextConfig } from 'next';
+import { join } from 'node:path';
 
+// Where /api/v1 is proxied. Read at build time (the rewrite is compiled in): pass API_URL as a build argument.
 const API_URL = process.env.API_URL ?? 'http://localhost:4000';
 
 const config: NextConfig = {
   poweredByHeader: false,
+  // Self-contained server for the container image (apps/web/Dockerfile).
+  output: 'standalone',
+  outputFileTracingRoot: join(__dirname, '../..'),
   reactStrictMode: true,
   transpilePackages: ['@fin/contracts', '@fin/money', '@fin/loan-engine'],
   // The browser only ever talks to this origin; /api/v1 is proxied to the API so cookies stay

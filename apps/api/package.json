@@ -18,6 +18,7 @@
     "db:seed:demo": "nest build && node dist/db/seed-demo.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1146.0",
     "@fin/contracts": "workspace:*",
     "@fin/loan-engine": "workspace:*",
     "@fin/money": "workspace:*",

@@ -4,7 +4,7 @@ Secure Lending, Collections, Accounting & Reconciliation Management System for a
 asset-backed lending business in India (electronics, 2W, 3W, 4W, buses, lorries/trucks).
 
 > **Status: Approved** with the recommended defaults for D1–D10 (D1 and D10 still need
-> CA/legal confirmation). Phases 2–9 are complete — see the [Phase 2](phase-2-report.md), [Phase 3](phase-3-report.md), [Phase 4](phase-4-report.md), [Phase 5](phase-5-report.md), [Phase 6](phase-6-report.md), [Phase 7](phase-7-report.md) , [Phase 8](phase-8-report.md) and [Phase 9](phase-9-report.md) reports. Before go-live: [go-live checklist](go-live-checklist.md) and [runbooks](runbooks/). To open the app: [run-and-verify.md](run-and-verify.md).
+> CA/legal confirmation). Phases 2–10 are complete — see the [Phase 2](phase-2-report.md), [Phase 3](phase-3-report.md), [Phase 4](phase-4-report.md), [Phase 5](phase-5-report.md), [Phase 6](phase-6-report.md), [Phase 7](phase-7-report.md), [Phase 8](phase-8-report.md), [Phase 9](phase-9-report.md) and [Phase 10](phase-10-report.md) reports. To deploy: [deployment.md](deployment.md). Before go-live: [go-live checklist](go-live-checklist.md) and [runbooks](runbooks/). To open the app: [run-and-verify.md](run-and-verify.md).
 
 ## The spine of the system
 

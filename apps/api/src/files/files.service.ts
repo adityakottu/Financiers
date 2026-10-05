@@ -1,11 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
 import { AppConfig, CONFIG } from '../config/config';
 import { unprocessable } from '../common/errors';
 import type { Db, Executor } from '../db/db';
 import { clamScan } from './scanner';
+import { BlobStore, LocalStore, S3Store } from './storage';
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
@@ -25,8 +24,8 @@ export function safeFileName(name: string, mime: string): string {
 }
 
 /**
- * Storage adapter. V1 writes to a private local directory; production swaps in S3 (SSE-KMS,
- * private bucket, presigned URLs) behind the same interface.
+ * Uploaded documents. Stored in a private local directory or a private S3 bucket (SSE-KMS) —
+ * STORAGE_DRIVER; see storage.ts. Files are only ever read back through the API.
  *
  * Malware scanning (doc 11 §5): with CLAMAV_HOST set, every upload is scanned by clamd before it
  * is stored — infected files are refused and never written. If clamd cannot be reached the file is
@@ -36,11 +35,12 @@ export function safeFileName(name: string, mime: string): string {
  */
 @Injectable()
 export class FilesService {
-  private readonly root: string;
+  private readonly blobs: BlobStore;
   private readonly log = new Logger('Files');
 
   constructor(@Inject(CONFIG) private readonly config: AppConfig) {
-    this.root = resolve(config.fileStorageDir);
+    const s = config.storage;
+    this.blobs = s.driver === 's3' ? new S3Store(s) : new LocalStore(s.dir);
   }
 
   async store(
@@ -61,9 +61,7 @@ export class FilesService {
 
     const now = new Date();
     const key = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${randomUUID()}`;
-    const path = join(this.root, key);
-    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    await writeFile(path, file.buffer, { mode: 0o600, flag: 'wx' });
+    await this.blobs.put(key, file.buffer, mime);
 
     return db
       .insertInto('files')
@@ -109,9 +107,7 @@ export class FilesService {
     return { scanned };
   }
 
-  async read(storageKey: string): Promise<Buffer> {
-    const path = resolve(this.root, storageKey);
-    if (!path.startsWith(this.root + '/')) throw new Error('Invalid storage key');
-    return readFile(path);
+  read(storageKey: string): Promise<Buffer> {
+    return this.blobs.get(storageKey);
   }
 }

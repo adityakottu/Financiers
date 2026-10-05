@@ -1,4 +1,6 @@
-import { Controller, DynamicModule, Get, Inject, MiddlewareConsumer, Module, NestModule, OnApplicationShutdown } from '@nestjs/common';
+import { Controller, DynamicModule, Get, Inject, MiddlewareConsumer, Module, NestModule, OnApplicationShutdown, Res } from '@nestjs/common';
+import type { Response } from 'express';
+import { shippedMigrations } from './db/migrate';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { PgThrottlerStorage } from './common/rate-limit.storage';
@@ -62,11 +64,32 @@ import { NotificationsController } from './dashboard/notifications.controller';
 class HealthController {
   constructor(@Inject(DB_TOKEN) private readonly db: Db) {}
 
+  /** Liveness: the process answers. No database call, so a database blip never restarts every task. */
   @Public()
   @Get()
-  async health() {
-    await sql`SELECT 1`.execute(this.db);
+  health() {
     return { status: 'ok' };
+  }
+
+  /**
+   * Readiness (load balancer target health): the database answers and every migration shipped with
+   * this build is applied — a new version never takes traffic against an old schema.
+   */
+  @Public()
+  @Get('ready')
+  async ready(@Res({ passthrough: true }) res: Response) {
+    try {
+      const applied = new Set((await sql<{ version: string }>`SELECT version FROM schema_migrations`.execute(this.db)).rows.map((r) => r.version));
+      const missing = shippedMigrations().filter((m) => !applied.has(m));
+      if (missing.length) {
+        res.status(503);
+        return { status: 'migrations-pending', pending: missing.length };
+      }
+      return { status: 'ready' };
+    } catch {
+      res.status(503);
+      return { status: 'database-unavailable' };
+    }
   }
 }
 

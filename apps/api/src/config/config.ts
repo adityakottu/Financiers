@@ -27,6 +27,15 @@ const envSchema = z.object({
   SESSION_IDLE_MINUTES_COLLECTOR: z.coerce.number().int().min(5).default(480),
   SESSION_ABSOLUTE_HOURS: z.coerce.number().int().min(1).default(12),
   FILE_STORAGE_DIR: z.string().default('./storage'),
+  // Uploaded documents: 'local' (FILE_STORAGE_DIR) or 's3' (private bucket, SSE-KMS; credentials from the task role).
+  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  S3_BUCKET: z.string().min(3).optional(),
+  S3_REGION: z.string().default('ap-south-1'),
+  S3_PREFIX: z.string().default('files/'),
+  S3_KMS_KEY_ID: z.string().optional(),
+  S3_ENDPOINT: z.string().url().optional(), // only for S3-compatible test servers (MinIO)
+  // Logs: 'json' (one JSON object per line, for CloudWatch) or 'pretty'. Default: json in production.
+  LOG_FORMAT: z.enum(['json', 'pretty']).optional(),
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
   /** clamd address for malware scanning, host:port (doc 11 §5). Required in production. */
   CLAMAV_ADDRESS: z.string().regex(/^[\w.-]+:\d+$/).optional(),
@@ -71,6 +80,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   }
   const production = c.NODE_ENV === 'production';
   if (production && !c.ENFORCE_MFA) throw new Error('ENFORCE_MFA cannot be disabled in production');
+  if (c.STORAGE_DRIVER === 's3' && !c.S3_BUCKET) throw new Error('STORAGE_DRIVER=s3 needs S3_BUCKET');
   if (production && !c.CLAMAV_ADDRESS) throw new Error('CLAMAV_ADDRESS (clamd host:port) is required in production: uploads must be virus-scanned');
   const cookieSecure = c.COOKIE_SECURE ?? production;
   if (c.SMS_PROVIDER === 'msg91' && !(c.MSG91_AUTH_KEY && c.MSG91_SENDER_ID)) {
@@ -96,6 +106,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     sessionIdleCollectorMs: c.SESSION_IDLE_MINUTES_COLLECTOR * 60_000,
     sessionAbsoluteMs: c.SESSION_ABSOLUTE_HOURS * 3_600_000,
     fileStorageDir: c.FILE_STORAGE_DIR,
+    storage:
+      c.STORAGE_DRIVER === 's3'
+        ? { driver: 's3' as const, bucket: c.S3_BUCKET!, region: c.S3_REGION, prefix: c.S3_PREFIX, kmsKeyId: c.S3_KMS_KEY_ID ?? null, endpoint: c.S3_ENDPOINT ?? null }
+        : { driver: 'local' as const, dir: c.FILE_STORAGE_DIR },
+    logFormat: c.LOG_FORMAT ?? (production ? 'json' : 'pretty'),
     trustProxy: c.TRUST_PROXY,
     maintenanceMode: c.MAINTENANCE_MODE,
     rateLimitPerMinute: c.RATE_LIMIT_PER_MINUTE,

@@ -6,9 +6,16 @@
 #
 #   DATABASE_URL=postgresql://owner@host/financiers scripts/restore-drill.sh            # dump now, then verify
 #   DATABASE_URL=postgresql://owner@host/financiers scripts/restore-drill.sh nightly.dump  # verify an existing backup
+#   DATABASE_URL=… BACKUP_TARGET=s3://bucket/postgres scripts/restore-drill.sh latest    # the newest nightly backup (weekly task)
+# An existing backup is also checked against the audit-chain head saved next to it by backup.sh.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+[ -n "${DATABASE_URL:-}" ] || DATABASE_URL=$(node apps/api/dist/ops/db-url.js 2>/dev/null || true)
 : "${DATABASE_URL:?set DATABASE_URL (a role that can create databases)}"
+s3obj() { node apps/api/dist/ops/s3-object.js "$@"; }
+integrity() {
+  if [ -f apps/api/dist/integrity/cli.js ]; then (cd apps/api && node dist/integrity/cli.js); else pnpm --silent --filter @fin/api exec tsx src/integrity/cli.ts; fi
+}
 
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 work=$(mktemp -d)
@@ -19,8 +26,27 @@ scratch_url=$(node -e "const u=new URL(process.argv[1]);u.pathname='/'+process.a
 admin_url=$(node -e "const u=new URL(process.argv[1]);u.pathname='/postgres';console.log(u.toString())" "$DATABASE_URL")
 t0=$(date +%s)
 
+head_json=""
+if [ "${1:-}" = latest ]; then
+  : "${BACKUP_TARGET:?set BACKUP_TARGET to find the latest backup}"
+  case "$BACKUP_TARGET" in
+    s3://*) s3obj get "${BACKUP_TARGET%/}/LATEST" "$work/LATEST" ;;
+    *) cp "$BACKUP_TARGET/LATEST" "$work/LATEST" ;;
+  esac
+  set -- "$(cat "$work/LATEST")"
+fi
 if [ -n "${1:-}" ]; then
-  dump="$1"; echo "Using backup $dump"
+  src="$1"
+  case "$src" in
+    s3://*)
+      dump="$work/backup.dump"; s3obj get "$src" "$dump"
+      s3obj get "${src%.dump}.audit-head.json" "$work/head.json" 2>/dev/null && head_json="$work/head.json" || true
+      ;;
+    *)
+      dump="$src"; [ -f "${src%.dump}.audit-head.json" ] && head_json="${src%.dump}.audit-head.json"
+      ;;
+  esac
+  echo "Using backup $src"
 else
   dump="$work/backup.dump"
   echo "1/4 Backing up $src_db …"
@@ -37,7 +63,12 @@ t_restore=$(( $(date +%s) - t0 ))
 
 echo "3/4 Integrity checks on the restored copy …"
 status=0
-DATABASE_URL="$scratch_url" pnpm --silent --filter @fin/api exec tsx src/integrity/cli.ts || status=1
+DATABASE_URL="$scratch_url" integrity || status=1
+if [ -n "$head_json" ]; then
+  want=$(node -e "const h=require(process.argv[1]);console.log(h.last_hash??'')" "$head_json")
+  got=$(psql -At "$scratch_url" -c "SELECT encode(hash, 'hex') FROM audit_logs ORDER BY id DESC LIMIT 1")
+  if [ "$want" = "$got" ]; then echo "    audit chain head matches the one recorded at backup time ✓"; else echo "    audit chain head DIFFERS from the one recorded at backup time ✗"; status=1; fi
+fi
 
 echo "4/4 Row counts (source vs restored) …"
 tables="loans payments receipts journal_entries journal_lines audit_logs customers loan_installments payment_allocations"

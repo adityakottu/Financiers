@@ -1,0 +1,25 @@
+name: OWASP ZAP baseline
+
+# Passive scan of staging (checklist B2): weekly, and on demand. Opens no issues automatically;
+# the report is attached to the run. Rules to ignore (with a reason) go in .zap/rules.tsv.
+on:
+  schedule:
+    - cron: '30 22 * * 6' # Sunday 04:00 IST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  zap:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: ${{ vars.APP_URL }}
+          rules_file_name: .zap/rules.tsv
+          allow_issue_writing: false
+          fail_action: true

@@ -45,9 +45,10 @@ phone retries.
    compromised.
 2. Point the application at it: update the `DATABASE_URL` secret and redeploy (AWS ECS: force a new
    deployment; single server: edit `.env`, then `docker compose up -d`).
-3. Re-create the least-privilege roles if they are not already in the instance:
-   `pnpm --filter @fin/api db:roles`, then set their passwords from Secrets Manager.
-4. `pnpm --filter @fin/api db:verify` → all checks pass.
+3. Re-create the least-privilege roles and the app's password: run the **release task** (AWS: the
+   `…-release` task definition, as the deploy workflow does; single server:
+   `docker compose run --rm release`). It is safe to run on a restored database.
+4. Integrity: *System health → Run now*, or `node dist/integrity/cli.js` in the API image → all pass.
 5. **Close the gap.** Payments made between the backup time and the outage exist on customers'
    SMS / WhatsApp receipts, the provider's delivery logs and the paper receipts. Compare them to
    the restored *Payments register*. Re-enter missing ones with their original reference and date.
@@ -56,19 +57,23 @@ phone retries.
 
 ## 3. Region outage (cross-region)
 
-1. In the DR account / region (ap-south-2): restore the latest cross-region snapshot copy
-   (Terraform `infra/terraform` with `region = "ap-south-2"`, `restore_snapshot = <arn>`).
+1. In Hyderabad (ap-south-2): apply `infra/terraform` with a separate state key and
+   `-var region=ap-south-2 -var dr_region=ap-south-1 -var restore_snapshot=<ARN of the latest
+   cross-region copy in the AWS Backup DR vault or the replicated automated backup>`.
 2. Promote the S3 replica bucket for documents, and replicate secrets.
 3. Point DNS at the DR load balancer (Route 53 failover record, or change the CNAME).
 4. Then §2 steps 3–6.
 
 ## Weekly restore drill (automated)
 
-`scripts/restore-drill.sh` takes the newest backup, restores it into a scratch database, runs every
-integrity check, compares row counts and drops the scratch database. It exits non-zero if anything
-fails. The scheduled workflow / cron runs it weekly. Review the result every Monday.
+`scripts/restore-drill.sh` takes the newest nightly backup (`scripts/backup.sh`), restores it into a
+scratch database, runs every integrity check, checks the audit-chain head recorded at backup time,
+and drops the scratch database. It exits non-zero if anything fails, which raises an alarm. On AWS
+it runs every Sunday 05:00 IST as an ECS scheduled task (`infra/terraform/schedules.tf`); on a
+single server, add it to cron. Review the result every Monday.
 ```bash
-DATABASE_URL=postgresql://owner@host/financiers scripts/restore-drill.sh              # fresh dump
-DATABASE_URL=postgresql://owner@host/financiers scripts/restore-drill.sh last.dump    # a given backup
+DATABASE_URL=postgresql://owner@host/financiers scripts/restore-drill.sh                 # fresh dump
+DATABASE_URL=… BACKUP_TARGET=s3://bucket/postgres scripts/restore-drill.sh latest      # newest nightly
+DATABASE_URL=postgresql://owner@host/financiers scripts/restore-drill.sh last.dump       # a given backup
 ```
 Record the "Restore took …" time each quarter against the 4-hour target.

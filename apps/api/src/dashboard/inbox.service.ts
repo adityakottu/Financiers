@@ -62,6 +62,10 @@ export class InboxService {
       () => sql<{ n: number }>`SELECT count(*)::int n FROM loans l WHERE l.status = 'ACTIVE' AND l.dpd > 30 AND NOT EXISTS (SELECT 1 FROM recovery_cases r WHERE r.loan_id = l.id AND r.status = 'OPEN') ${br('l.branch_id')}`, 'info');
     add(p('jobs.run') || p('audit.view'), 'integrity', 'Integrity check failed', 'The last ledger / audit integrity check found a problem — see the runbook', '/admin/system',
       () => sql<{ n: number }>`SELECT (CASE WHEN (SELECT ok FROM integrity_runs WHERE finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 1) = false THEN 1 ELSE 0 END)::int n`);
+    add(p('import.confirm'), 'imports', 'Migration imports to confirm', 'Validated by someone else; nothing is created until you confirm', '/migration',
+      () => sql<{ n: number }>`SELECT count(*)::int n FROM import_batches i WHERE i.status = 'VALIDATED' AND i.uploaded_by <> ${me}`);
+    add(p('pilot.sign_off'), 'pilot', 'Parallel-run days to sign off', 'Old day sheet compared with the app, not yet signed', '/pilot',
+      () => sql<{ n: number }>`SELECT count(*)::int n FROM parallel_run_days d WHERE d.signed_off_at IS NULL ${br('d.branch_id')}`);
     add(true, 'exports', 'Exports ready', 'Large reports prepared in the background', '/reports',
       () => sql<{ n: number }>`SELECT count(*)::int n FROM export_jobs j WHERE j.requested_by = ${me} AND j.status = 'DONE' AND j.finished_at > now() - interval '1 day'`, 'ok');
 

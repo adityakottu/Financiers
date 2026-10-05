@@ -44,6 +44,9 @@ import { BankingService } from './accounting/banking.service';
 import { BooksService } from './accounting/books.service';
 import { ExpensesService } from './accounting/expenses.service';
 import { JournalsService } from './accounting/journals.service';
+import { ImportsController } from './imports/imports.controller';
+import { ImportsService } from './imports/imports.service';
+import { PilotService } from './imports/pilot.service';
 import { ReconciliationController } from './reconciliation/reconciliation.controller';
 import { SettlementsService } from './reconciliation/settlements.service';
 import { StatementsService } from './reconciliation/statements.service';
@@ -128,6 +131,7 @@ export class AppModule implements NestModule {
         JournalsController,
         BooksController,
         ReconciliationController,
+        ImportsController,
         RecoveryController,
         ReportsController,
         NotificationsController,
@@ -160,6 +164,8 @@ export class AppModule implements NestModule {
         BooksService,
         SettlementsService,
         StatementsService,
+        ImportsService,
+        PilotService,
         RecoveryService,
         ReportsService,
         DashboardService,

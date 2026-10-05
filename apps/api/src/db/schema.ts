@@ -405,6 +405,7 @@ export interface Customers {
   gender: string | null;
   id: Generated<string>;
   kyc_status: Generated<string>;
+  legacy_no: string | null;
   mandal: string | null;
   mobile: string;
   monthly_income: Numeric | null;
@@ -545,6 +546,27 @@ export interface IdempotencyKeys {
   response_status: number;
   route: string;
   user_id: string;
+}
+
+export interface ImportBatches {
+  batch_no: string;
+  confirmed_at: Timestamp | null;
+  confirmed_by: string | null;
+  cutover_date: string | null;
+  errors: Generated<Json>;
+  file_name: string;
+  file_sha256: string;
+  id: Generated<string>;
+  kind: string;
+  result: Json | null;
+  rows: Json;
+  rows_invalid: number;
+  rows_total: number;
+  rows_valid: number;
+  status: string;
+  totals: Generated<Json>;
+  uploaded_at: Generated<Timestamp>;
+  uploaded_by: string;
 }
 
 export interface IntegrityRuns {
@@ -726,8 +748,10 @@ export interface Loans {
   interest_method: string;
   interest_outstanding: Generated<Numeric>;
   last_payment_at: Timestamp | null;
+  legacy_no: string | null;
   loan_no: string;
   maturity_date: string;
+  migrated_on: string | null;
   net_disbursement: Numeric;
   next_due_amount: Numeric | null;
   next_due_date: string | null;
@@ -886,6 +910,20 @@ export interface Outbox {
   payload: Json;
   processed_at: Timestamp | null;
   topic: string;
+}
+
+export interface ParallelRunDays {
+  branch_id: string;
+  business_date: string;
+  file_name: string;
+  id: Generated<string>;
+  legacy_rows: Json;
+  result: Json | null;
+  sign_off_note: string | null;
+  signed_off_at: Timestamp | null;
+  signed_off_by: string | null;
+  uploaded_at: Generated<Timestamp>;
+  uploaded_by: string;
 }
 
 export interface PasswordResetTokens {
@@ -1216,6 +1254,7 @@ export interface DB {
   export_jobs: ExportJobs;
   files: Files;
   idempotency_keys: IdempotencyKeys;
+  import_batches: ImportBatches;
   integrity_runs: IntegrityRuns;
   job_runs: JobRuns;
   journal_entries: JournalEntries;
@@ -1235,6 +1274,7 @@ export interface DB {
   numbering_formats: NumberingFormats;
   numbering_sequences: NumberingSequences;
   outbox: Outbox;
+  parallel_run_days: ParallelRunDays;
   password_reset_tokens: PasswordResetTokens;
   payment_allocations: PaymentAllocations;
   payment_reversals: PaymentReversals;

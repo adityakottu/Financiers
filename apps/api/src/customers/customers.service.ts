@@ -504,7 +504,12 @@ export class CustomersService {
     ]);
     let matchedBy: string;
 
-    if (/^[A-Z]{5}\d{4}[A-Z]$/.test(upper)) {
+    // A number from the old system (data migration) finds its customer exactly.
+    const legacy = !/\s/.test(t) && t.length <= 40 ? await this.db.selectFrom('customers').select('id').where('legacy_no', '=', t).executeTakeFirst() : undefined;
+    if (legacy) {
+      matchedBy = 'LEGACY_NO';
+      base = base.where('c.legacy_no', '=', t);
+    } else if (/^[A-Z]{5}\d{4}[A-Z]$/.test(upper)) {
       matchedBy = 'PAN';
       const bidx = this.crypto.blindIndex('PAN', upper);
       base = base.where('c.id', 'in', (eb) =>
@@ -616,7 +621,11 @@ export class CustomersService {
         'b.code as branch_code',
         sql<string>`coalesce(a.registration_no, nullif(concat_ws(' ', a.make, a.model), ''), a.description)`.as('asset_label'),
       ]);
-    if (/^LN[-/]?[A-Z0-9]/i.test(t)) {
+    const legacy = !/\s/.test(t) && t.length <= 40 ? await this.db.selectFrom('loans').select('id').where('legacy_no', '=', t).executeTakeFirst() : undefined;
+    if (legacy) {
+      matchedBy = 'LEGACY_NO';
+      q = q.where('l.legacy_no', '=', t);
+    } else if (/^LN[-/]?[A-Z0-9]/i.test(t)) {
       matchedBy = 'LOAN_NO';
       q = q.where('l.loan_no', 'ilike', `%${t.replace(/[%_\\]/g, '')}%`);
     } else if (REGISTRATION_RE.test(normaliseRegistration(t)) && /[A-Z]/i.test(t) && /\d/.test(t)) {

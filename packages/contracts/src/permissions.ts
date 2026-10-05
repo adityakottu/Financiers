@@ -90,6 +90,12 @@ export const PERMISSIONS = {
   'report.reconciliation': 'Reconciliation reports',
   'export.data': 'Download reports as Excel / PDF (audited)',
 
+  // Migration & pilot
+  'import.run': 'Upload and validate data-migration files (customers, running loans)',
+  'import.confirm': 'Confirm a validated migration import (not your own upload)',
+  'pilot.compare': 'Upload the old process’s day sheet and see the parallel-run comparison',
+  'pilot.sign_off': 'Sign off a parallel-run day',
+
   // System
   'jobs.run': 'Run end-of-day jobs manually',
 
@@ -139,6 +145,9 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'ALL',
     mfaRequired: true,
     permissions: [
+      'import.confirm',
+      'pilot.compare',
+      'pilot.sign_off',
       'recovery.view',
       'recovery.note',
       'recovery.manage',
@@ -185,6 +194,9 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'BRANCH',
     mfaRequired: false,
     permissions: [
+      'import.run',
+      'pilot.compare',
+      'pilot.sign_off',
       'recovery.view',
       'recovery.note',
       'recovery.manage',
@@ -241,6 +253,8 @@ export const SYSTEM_ROLES: RoleDefinition[] = [
     scope: 'BRANCH',
     mfaRequired: true,
     permissions: [
+      'import.run',
+      'pilot.compare',
       'recovery.view',
       'report.loan',
       'report.collection',

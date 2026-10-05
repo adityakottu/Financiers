@@ -53,7 +53,7 @@ export function parseCsv(text: string): string[][] {
   return rows.filter((r) => r.some((c) => c.trim() !== ''));
 }
 
-async function xlsxRows(buf: Buffer): Promise<string[][]> {
+export async function xlsxRows(buf: Buffer): Promise<string[][]> {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buf as unknown as ArrayBuffer);
   const ws = wb.worksheets[0];

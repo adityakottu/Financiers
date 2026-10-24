@@ -6,3 +6,10 @@ onlyBuiltDependencies:
   - esbuild
   - sharp
   - unrs-resolver
+# Security floors for transitive dependencies (image scan, Trivy): remove once the parents require them.
+overrides:
+  body-parser@>=2 <2.4.0: ^2.4.0
+  multer@<2.5.0: ^2.5.0
+  # next pins postcss 8.4.31 (and with it source-map-js 1.2.1)
+  postcss@<8.5.18: ^8.5.18
+  source-map-js@<1.2.2: ^1.2.2

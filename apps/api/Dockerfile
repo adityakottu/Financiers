@@ -27,9 +27,12 @@ COPY apps/api/package.json apps/api/
 RUN pnpm install --frozen-lockfile --prod --filter "@fin/api..."
 
 FROM node:22-alpine AS runtime
+# Package managers are build-time only: removing npm / yarn / corepack keeps their dependencies
+# (and their vulnerabilities) out of the running image.
 # pg_dump / pg_restore / psql for the backup and restore-drill tasks; tini as PID 1.
 RUN apk add --no-cache postgresql16-client bash tini && addgroup -S fin && adduser -S -G fin -u 10001 fin \
-  && mkdir -p /data/files && chown 10001:10001 /data/files && chmod 700 /data/files
+  && mkdir -p /data/files && chown 10001:10001 /data/files && chmod 700 /data/files \
+  && rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-*
 WORKDIR /app
 # Amazon RDS certificate authorities: connections use sslmode=verify-full (Node and libpq).
 ADD --chmod=644 https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /etc/ssl/rds-global-bundle.pem

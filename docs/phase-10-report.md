@@ -43,9 +43,10 @@ download packages, so CI runs them on the first push. The AWS apply and the depl
 account. Pass `-var image_tag=<the deployed tag>` when you apply.
 
 ### Defects found and fixed during Phase 10
-1. The local document store threw synchronously for an invalid key instead of returning a rejected promise (found by the new test).
-2. The integrity-failure alarm pattern did not match the log text's case (`INTEGRITY CHECK FAILED`). CloudWatch patterns are case-sensitive.
-3. The release task first built the `ALTER ROLE` statement with string interpolation. The security lint refused it, and PostgreSQL's `format(%L)` now quotes the value.
+1. **The first CI image scan (Trivy) found real vulnerabilities, now fixed:** a *critical* remote-code-execution flaw in Next.js's image optimizer (15.5.26 → **15.5.28**); body-parser 2.3 → 2.4 and multer 2.4 → 2.5 (denial of service on uploads); zod 3 → **4** (denial of service — all tests pass unchanged); postcss and source-map-js floors under Next. The rest came from the npm CLI bundled in the Node base image, which the app never uses at runtime: npm, yarn and corepack are now removed from both images.
+2. The local document store threw synchronously for an invalid key instead of returning a rejected promise (found by the new test).
+3. The integrity-failure alarm pattern did not match the log text's case (`INTEGRITY CHECK FAILED`). CloudWatch patterns are case-sensitive.
+4. The release task first built the `ALTER ROLE` statement with string interpolation. The security lint refused it, and PostgreSQL's `format(%L)` now quotes the value.
 
 ## 3. Deviations and deferrals
 

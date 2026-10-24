@@ -1,0 +1,5 @@
+env               = "production"
+domain            = "app.example.in"
+certificate_arn   = "arn:aws:acm:ap-south-1:123456789012:certificate/…"
+alert_email       = "it-alerts@example.in"
+github_repository = "adityakottu/Financiers"

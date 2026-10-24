@@ -11,7 +11,7 @@ import { generateSecret, totp } from '../auth/totp';
 import { CryptoService } from '../common/crypto.service';
 import { AppConfig, loadConfig } from '../config/config';
 import { createDb, Db } from '../db/db';
-import { TEST_DATABASE_URL } from './global-setup';
+import { TEST_APP_DATABASE_URL, TEST_DATABASE_URL } from './global-setup';
 
 export const ORIGIN = 'http://localhost:3000';
 export const PASSWORD = 'Correct#Horse42battery';
@@ -28,7 +28,7 @@ export interface TestApp {
 export function testConfig(overrides: Record<string, string> = {}): AppConfig {
   return loadConfig({
     NODE_ENV: 'test',
-    DATABASE_URL: TEST_DATABASE_URL,
+    DATABASE_URL: TEST_APP_DATABASE_URL,
     APP_ORIGIN: ORIGIN,
     DATA_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
     BLIND_INDEX_KEY: Buffer.alloc(32, 9).toString('base64'),

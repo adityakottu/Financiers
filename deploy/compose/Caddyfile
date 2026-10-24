@@ -1,0 +1,21 @@
+# HTTPS with automatic certificates. /api/* goes straight to the API; everything else to the web app.
+{$DOMAIN} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		-Server
+	}
+	request_body /api/* {
+		max_size 12MB
+	}
+	handle /api/* {
+		reverse_proxy api:4000
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+	log {
+		output stdout
+		format json
+	}
+}

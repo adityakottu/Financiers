@@ -15,9 +15,11 @@ import {
   Restriction,
 } from './context';
 import { SessionService } from './session.service';
+import { SystemService } from '../common/system.service';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const TOUCH_INTERVAL_MS = 60_000;
+const MAINTENANCE_ALLOWED = ['/api/v1/auth/', '/api/v1/system/maintenance'];
 export const RECENT_AUTH_WINDOW_MS = 5 * 60_000;
 
 /**
@@ -32,6 +34,7 @@ export class AuthGuard implements CanActivate {
     private readonly access: AccessService,
     @Inject(CONFIG) private readonly config: AppConfig,
     @Inject(DB_TOKEN) private readonly db: Db,
+    private readonly system: SystemService,
   ) {}
 
   private meta<T>(key: string, ctx: ExecutionContext): T | undefined {
@@ -48,6 +51,12 @@ export class AuthGuard implements CanActivate {
       if (origin && !this.config.allowedOrigins.includes(origin)) {
         throw forbidden('BAD_ORIGIN', 'Request origin not allowed');
       }
+    }
+
+    // Maintenance mode: nothing changes except signing in and switching maintenance off.
+    if (unsafe && !MAINTENANCE_ALLOWED.some((p) => req.path.startsWith(p))) {
+      const m = await this.system.maintenance();
+      if (m.enabled) throw new ApiError(503, 'MAINTENANCE', m.message ?? 'The system is under maintenance; changes are paused. You can still look things up.');
     }
 
     if (this.meta<boolean>(IS_PUBLIC, ctx)) return true;

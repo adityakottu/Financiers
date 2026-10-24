@@ -322,10 +322,11 @@ export class SettlementsService {
   async day(auth: AuthContext, branchId: string, date: string) {
     if (!scope.canAccessBranch(auth, branchId)) throw notFound('Branch');
     const [branch, day, employees] = await Promise.all([
-      this.db.selectFrom('branches').select(['id', 'code', 'name']).where('id', '=', branchId).executeTakeFirstOrThrow(),
+      this.db.selectFrom('branches').select(['id', 'code', 'name']).where('id', '=', branchId).executeTakeFirst(),
       this.db.selectFrom('business_days as d').leftJoin('users as c', 'c.id', 'd.closed_by').leftJoin('users as r', 'r.id', 'd.reopen_requested_by').leftJoin('users as o', 'o.id', 'd.reopened_by').selectAll('d').select(['c.full_name as closed_by_name', 'r.full_name as reopen_requested_by_name', 'o.full_name as reopened_by_name']).where('d.branch_id', '=', branchId).where('d.business_date', '=', date).executeTakeFirst(),
       this.employeesFor(this.db, branchId, date),
     ]);
+    if (!branch) throw notFound('Branch');
     const rows = [];
     for (const e of employees) {
       const [figures, collections, s] = await Promise.all([

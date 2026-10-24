@@ -153,7 +153,7 @@ describe('every report runs and exports (Excel and PDF)', () => {
   it('exports need export.data and are audited', async () => {
     expect((await collector.download(`/reports/collection-daily?format=xlsx&from=${monthStart}&to=${today}`)).status).toBe(403);
     await accountant.download(`/reports/trial-balance?format=pdf&asOf=${today}`);
-    const log = await t.db.selectFrom('audit_logs').select(['new_values']).where('action', '=', 'report.exported').where('entity_id', '=', 'trial-balance').executeTakeFirst();
+    const log = await t.db.selectFrom('audit_logs').select(['new_values']).where('action', '=', 'report.exported').where('entity_id', '=', 'trial-balance').orderBy('id', 'desc').executeTakeFirst();
     expect(log).toBeTruthy();
     expect((log!.new_values as { format: string }).format).toBe('pdf');
   });

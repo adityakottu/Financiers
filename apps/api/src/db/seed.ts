@@ -13,6 +13,7 @@ export const DEFAULT_NUMBERING: Record<string, string> = {
   EXPENSE: 'EXP-{FY}-{SEQ:6}',
   ASSET: 'AST-{FY}-{SEQ:6}',
   DEPOSIT: 'DEP-{FY}-{SEQ:6}',
+  IMPORT: 'IMP-{FY}-{SEQ:4}',
 };
 
 /** Reference data that must match the code: permissions, system roles and their grants. Safe to re-run. */

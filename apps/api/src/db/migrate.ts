@@ -3,7 +3,10 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
 
-const MIGRATIONS_DIR = join(__dirname, 'migrations');
+export const MIGRATIONS_DIR = join(__dirname, 'migrations');
+
+/** Migration files shipped with this build (the readiness check compares them with the database). */
+export const shippedMigrations = () => readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort();
 
 /** Applies pending SQL migrations in order, each in its own transaction. Refuses edited migrations. */
 export async function migrate(databaseUrl: string, log: (m: string) => void = console.log) {

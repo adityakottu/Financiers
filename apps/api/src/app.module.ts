@@ -1,6 +1,11 @@
-import { Controller, DynamicModule, Get, Inject, MiddlewareConsumer, Module, NestModule, OnApplicationShutdown } from '@nestjs/common';
+import { Controller, DynamicModule, Get, Inject, MiddlewareConsumer, Module, NestModule, OnApplicationShutdown, Res } from '@nestjs/common';
+import type { Response } from 'express';
+import { shippedMigrations } from './db/migrate';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { PgThrottlerStorage } from './common/rate-limit.storage';
+import { SystemController, SystemService } from './common/system.service';
+import { IntegrityController, IntegrityService } from './integrity/integrity.service';
 import { sql } from 'kysely';
 import { AuditController } from './audit/audit.controller';
 import { AuditService } from './audit/audit.service';
@@ -41,6 +46,9 @@ import { BankingService } from './accounting/banking.service';
 import { BooksService } from './accounting/books.service';
 import { ExpensesService } from './accounting/expenses.service';
 import { JournalsService } from './accounting/journals.service';
+import { ImportsController } from './imports/imports.controller';
+import { ImportsService } from './imports/imports.service';
+import { PilotService } from './imports/pilot.service';
 import { ReconciliationController } from './reconciliation/reconciliation.controller';
 import { SettlementsService } from './reconciliation/settlements.service';
 import { StatementsService } from './reconciliation/statements.service';
@@ -56,30 +64,59 @@ import { NotificationsController } from './dashboard/notifications.controller';
 class HealthController {
   constructor(@Inject(DB_TOKEN) private readonly db: Db) {}
 
+  /** Liveness: the process answers. No database call, so a database blip never restarts every task. */
   @Public()
   @Get()
-  async health() {
-    await sql`SELECT 1`.execute(this.db);
+  health() {
     return { status: 'ok' };
+  }
+
+  /**
+   * Readiness (load balancer target health): the database answers and every migration shipped with
+   * this build is applied — a new version never takes traffic against an old schema.
+   */
+  @Public()
+  @Get('ready')
+  async ready(@Res({ passthrough: true }) res: Response) {
+    try {
+      const applied = new Set((await sql<{ version: string }>`SELECT version FROM schema_migrations`.execute(this.db)).rows.map((r) => r.version));
+      const missing = shippedMigrations().filter((m) => !applied.has(m));
+      if (missing.length) {
+        res.status(503);
+        return { status: 'migrations-pending', pending: missing.length };
+      }
+      return { status: 'ready' };
+    } catch {
+      res.status(503);
+      return { status: 'database-unavailable' };
+    }
   }
 }
 
+const THROTTLE_DB = Symbol('THROTTLE_DB');
+
 class DbLifecycle implements OnApplicationShutdown {
-  constructor(@Inject(DB_TOKEN) private readonly db: Db) {}
+  constructor(
+    @Inject(DB_TOKEN) private readonly db: Db,
+    @Inject(THROTTLE_DB) private readonly throttleDb: Db,
+  ) {}
   async onApplicationShutdown() {
-    await this.db.destroy();
+    await Promise.all([this.db.destroy(), this.throttleDb.destroy()]);
   }
 }
 
 @Module({})
 export class AppModule implements NestModule {
   static forRoot(config: AppConfig): DynamicModule {
+    // Rate-limit counters live in PostgreSQL so limits hold across API instances (own small pool).
+    const throttleDb = createDb(config.databaseUrl, 3);
     return {
       module: AppModule,
       imports: [
         ThrottlerModule.forRoot({
           // Generous default per client IP; auth routes set tighter limits with @Throttle.
-          throttlers: [{ name: 'default', ttl: 60_000, limit: 300 }],
+          throttlers: [{ name: 'default', ttl: 60_000, limit: config.rateLimitPerMinute }],
+          storage: new PgThrottlerStorage(throttleDb),
           // Integration tests make many logins from one IP; they opt in with a header when testing limits.
           skipIf: (ctx) =>
             config.env === 'test' && !ctx.switchToHttp().getRequest<{ headers: Record<string, string> }>().headers['x-test-throttle'],
@@ -87,6 +124,8 @@ export class AppModule implements NestModule {
       ],
       controllers: [
         HealthController,
+        SystemController,
+        IntegrityController,
         AuthController,
         UsersController,
         BranchesController,
@@ -115,6 +154,7 @@ export class AppModule implements NestModule {
         JournalsController,
         BooksController,
         ReconciliationController,
+        ImportsController,
         RecoveryController,
         ReportsController,
         NotificationsController,
@@ -122,8 +162,11 @@ export class AppModule implements NestModule {
       providers: [
         { provide: CONFIG, useValue: config },
         { provide: DB_TOKEN, useFactory: () => createDb(config.databaseUrl) },
+        { provide: THROTTLE_DB, useValue: throttleDb },
         DbLifecycle,
         CryptoService,
+        SystemService,
+        IntegrityService,
         AccessService,
         SessionService,
         AuthService,
@@ -144,6 +187,8 @@ export class AppModule implements NestModule {
         BooksService,
         SettlementsService,
         StatementsService,
+        ImportsService,
+        PilotService,
         RecoveryService,
         ReportsService,
         DashboardService,

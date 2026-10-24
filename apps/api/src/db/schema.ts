@@ -405,6 +405,7 @@ export interface Customers {
   gender: string | null;
   id: Generated<string>;
   kyc_status: Generated<string>;
+  legacy_no: string | null;
   mandal: string | null;
   mobile: string;
   monthly_income: Numeric | null;
@@ -526,7 +527,9 @@ export interface Files {
   id: Generated<string>;
   mime_type: string;
   original_name: string;
+  scan_result: string | null;
   scan_status: Generated<string>;
+  scanned_at: Timestamp | null;
   sha256: Buffer;
   size_bytes: number;
   storage_key: string;
@@ -543,6 +546,37 @@ export interface IdempotencyKeys {
   response_status: number;
   route: string;
   user_id: string;
+}
+
+export interface ImportBatches {
+  batch_no: string;
+  confirmed_at: Timestamp | null;
+  confirmed_by: string | null;
+  cutover_date: string | null;
+  errors: Generated<Json>;
+  file_name: string;
+  file_sha256: string;
+  id: Generated<string>;
+  kind: string;
+  result: Json | null;
+  rows: Json;
+  rows_invalid: number;
+  rows_total: number;
+  rows_valid: number;
+  status: string;
+  totals: Generated<Json>;
+  uploaded_at: Generated<Timestamp>;
+  uploaded_by: string;
+}
+
+export interface IntegrityRuns {
+  checks: Generated<Json>;
+  finished_at: Timestamp | null;
+  id: Generated<string>;
+  ok: boolean | null;
+  run_by: string | null;
+  started_at: Generated<Timestamp>;
+  trigger: string;
 }
 
 export interface JobRuns {
@@ -714,8 +748,10 @@ export interface Loans {
   interest_method: string;
   interest_outstanding: Generated<Numeric>;
   last_payment_at: Timestamp | null;
+  legacy_no: string | null;
   loan_no: string;
   maturity_date: string;
+  migrated_on: string | null;
   net_disbursement: Numeric;
   next_due_amount: Numeric | null;
   next_due_date: string | null;
@@ -876,6 +912,20 @@ export interface Outbox {
   topic: string;
 }
 
+export interface ParallelRunDays {
+  branch_id: string;
+  business_date: string;
+  file_name: string;
+  id: Generated<string>;
+  legacy_rows: Json;
+  result: Json | null;
+  sign_off_note: string | null;
+  signed_off_at: Timestamp | null;
+  signed_off_by: string | null;
+  uploaded_at: Generated<Timestamp>;
+  uploaded_by: string;
+}
+
 export interface PasswordResetTokens {
   created_at: Generated<Timestamp>;
   created_by: string | null;
@@ -968,6 +1018,13 @@ export interface PromisesToPay {
   promised_date: string;
   resolved_at: Timestamp | null;
   status: Generated<string>;
+}
+
+export interface RateLimits {
+  blocked_until: Timestamp | null;
+  expires_at: Timestamp;
+  hits: number;
+  key: string;
 }
 
 export interface Receipts {
@@ -1111,6 +1168,13 @@ export interface SettlementDifferences {
   status: Generated<string>;
 }
 
+export interface SystemFlags {
+  key: string;
+  updated_at: Generated<Timestamp>;
+  updated_by: string | null;
+  value: Json;
+}
+
 export interface SystemSettings {
   key: string;
   updated_at: Generated<Timestamp>;
@@ -1190,6 +1254,8 @@ export interface DB {
   export_jobs: ExportJobs;
   files: Files;
   idempotency_keys: IdempotencyKeys;
+  import_batches: ImportBatches;
+  integrity_runs: IntegrityRuns;
   job_runs: JobRuns;
   journal_entries: JournalEntries;
   journal_lines: JournalLines;
@@ -1208,12 +1274,14 @@ export interface DB {
   numbering_formats: NumberingFormats;
   numbering_sequences: NumberingSequences;
   outbox: Outbox;
+  parallel_run_days: ParallelRunDays;
   password_reset_tokens: PasswordResetTokens;
   payment_allocations: PaymentAllocations;
   payment_reversals: PaymentReversals;
   payments: Payments;
   permissions: Permissions;
   promises_to_pay: PromisesToPay;
+  rate_limits: RateLimits;
   receipts: Receipts;
   reconciliation_matches: ReconciliationMatches;
   recovery_actions: RecoveryActions;
@@ -1225,6 +1293,7 @@ export interface DB {
   roles: Roles;
   sessions: Sessions;
   settlement_differences: SettlementDifferences;
+  system_flags: SystemFlags;
   system_settings: SystemSettings;
   user_branches: UserBranches;
   user_permission_overrides: UserPermissionOverrides;

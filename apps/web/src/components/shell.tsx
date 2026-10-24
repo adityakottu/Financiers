@@ -9,6 +9,7 @@ import { ROLE_LABELS, useSession } from '@/lib/session';
 import { GlobalSearch } from './global-search';
 import { NAV, NavItem } from './nav';
 import { cx, Spinner } from './ui';
+import { useApi } from '@/lib/hooks';
 
 function isActive(pathname: string, href: string) {
   return href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(href + '/');
@@ -210,7 +211,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         )}
       </header>
 
-      <main className="mx-auto min-w-0 max-w-[1400px] px-4 pb-24 pt-6 md:px-8 md:pb-10">{children}</main>
+      <main className="mx-auto min-w-0 max-w-[1400px] px-4 pb-24 pt-6 md:px-8 md:pb-10">
+        <MaintenanceBanner />
+        {children}
+      </main>
 
       {/* Mobile bottom navigation */}
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="Quick">
@@ -239,6 +243,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
           );
         })}
       </nav>
+    </div>
+  );
+}
+
+/** Shown to everyone while maintenance mode is on (changes are refused by the server). */
+function MaintenanceBanner() {
+  const { data } = useApi<{ maintenance: { enabled: boolean; message: string | null } }>('/system/status');
+  if (!data?.maintenance.enabled) return null;
+  return (
+    <div role="status" className="mb-4 rounded-md border border-warn/40 bg-warn-soft px-4 py-2.5 text-[13px] text-warn">
+      <strong>Maintenance:</strong> changes are paused — you can look things up but not record anything. {data.maintenance.message}
     </div>
   );
 }

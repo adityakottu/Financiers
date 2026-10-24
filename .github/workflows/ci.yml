@@ -70,6 +70,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
+      fail-fast: false # report both images, not just the first failure
       matrix:
         app: [api, web]
     steps:
@@ -93,12 +94,10 @@ jobs:
             docker run -d --name web -p 3000:3000 financiers-web:ci && sleep 5 && curl -sf -o /dev/null http://localhost:3000/login
           fi
       - name: Vulnerability scan (Trivy)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: financiers-${{ matrix.app }}:ci
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: '1'
+        # The Trivy image (pinned) rather than a third-party action: one less moving part in CI.
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.67.2 image \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress financiers-${{ matrix.app }}:ci
 
   infra:
     runs-on: ubuntu-latest

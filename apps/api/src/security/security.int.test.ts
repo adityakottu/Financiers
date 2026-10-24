@@ -198,7 +198,7 @@ describe('audit completeness', () => {
     await admin.download(`/reports/trial-balance?format=xlsx&asOf=${istToday()}`);
     expect(await count('report.exported')).toBe(before + 1);
     const failedLogins = Number((await sql<{ n: string }>`SELECT count(*)::text n FROM login_events WHERE success = false`.execute(t.db)).rows[0]!.n);
-    await request(t.server).post('/api/v1/auth/login').send({ identifier: clients.ACCOUNTANT.user.username, password: 'definitely-wrong-1' });
+    await request(t.server).post('/api/v1/auth/login').send({ identifier: clients.ACCOUNTANT.user.username, password: 'definitely-wrong-1' }); // gitleaks:allow (deliberately wrong test password)
     expect(Number((await sql<{ n: string }>`SELECT count(*)::text n FROM login_events WHERE success = false`.execute(t.db)).rows[0]!.n)).toBe(failedLogins + 1);
   });
 });
